@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_NetworkDiscoveryClient.cs
+ * Author: Mason Prather
+ * Description: Listens for local UDP photo-server beacons and records the sender IP address and advertised HTTP upload port.
+ * Project Role: Client-side discovery path for companion upload scenes.
+ * Key Inputs: UDP PHOTO_SERVER beacons on the configured discovery port.
+ * Key Outputs: Discovered server IP/port fields, discovery coroutine completion, and diagnostic logs.
+ */
+
 using System;
 using System.Collections;
 using System.Net;

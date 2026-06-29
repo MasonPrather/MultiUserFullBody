@@ -1,3 +1,10 @@
+/*
+ * Script Name: PlayerListUI.cs
+ * Author: Mason Prather
+ * Description: Player List UI displays connected player entries and per-player list rows.
+ * Project Role: Menu UI support for multiplayer participant awareness.
+ */
+
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -47,7 +54,7 @@ namespace XRMultiplayer
             if (m_CallbacksInitialized) return;
             m_CallbacksInitialized = true;
 
-            //Remove Prefab placeholders
+            // Remove prefab-time list entries before runtime player rows are added.
             foreach (Transform t in m_ConnectedPlayersViewportContentTransform)
             {
                 Destroy(t.gameObject);

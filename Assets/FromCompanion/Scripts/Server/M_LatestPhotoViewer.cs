@@ -1,8 +1,20 @@
+/*
+ * Script Name: M_LatestPhotoViewer.cs
+ * Author: Mason Prather
+ * Description: Polls the latest saved phone-upload path and displays the newest uploaded image in a RawImage preview.
+ * Project Role: Server-scene visual monitor for confirming phone uploads arrive on the Quest/Unity host.
+ * Key Inputs: M_SimpleHttpServer.LastSavedPhotoPath and uploaded image bytes.
+ * Key Outputs: Loaded Texture2D assigned to the configured RawImage and filename/status label updates.
+ */
+
 using System.Collections;
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 public class M_LatestPhotoViewer : MonoBehaviour
 {
@@ -82,7 +94,7 @@ public class M_LatestPhotoViewer : MonoBehaviour
             ApplyFitAndCenter(testTex.width, testTex.height);
 
             Debug.Log("[M_LatestPhotoViewer] Test red texture applied in Start(). " +
-                      "If you don't see a red square, the issue is UI layout, not image loading.");
+                      "A missing red square indicates a UI layout issue rather than an image loading issue.");
         }
         else
         {
@@ -108,7 +120,7 @@ public class M_LatestPhotoViewer : MonoBehaviour
     private void Update()
     {
         // Optional debug: press SPACE to reapply red test square in Editor
-        if (Input.GetKeyDown(KeyCode.Space) && targetImage != null)
+        if (IsEditorDebugReloadPressed() && targetImage != null)
         {
             Debug.Log("[M_LatestPhotoViewer] Space pressed: reapplying red test texture.");
             Texture2D testTex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
@@ -145,6 +157,25 @@ public class M_LatestPhotoViewer : MonoBehaviour
                 loadCoroutine = StartCoroutine(LoadAndDisplayWithRetry(latestPath));
             }
         }
+    }
+
+    private static bool IsEditorDebugReloadPressed()
+    {
+#if UNITY_EDITOR
+#if ENABLE_INPUT_SYSTEM
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard != null)
+            return keyboard.spaceKey.wasPressedThisFrame;
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        return Input.GetKeyDown(KeyCode.Space);
+#else
+        return false;
+#endif
+#else
+        return false;
+#endif
     }
 
     /// <summary>

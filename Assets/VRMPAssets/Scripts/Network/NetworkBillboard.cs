@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkBillboard.cs
+ * Author: Mason Prather
+ * Description: Network Billboard synchronizes networked scene objects, player-facing tools, and shared interaction helpers.
+ * Project Role: Network support layer for shared VR scenes.
+ */
+
 using Unity.Netcode;
 using Unity.VRTemplate;
 using UnityEngine;

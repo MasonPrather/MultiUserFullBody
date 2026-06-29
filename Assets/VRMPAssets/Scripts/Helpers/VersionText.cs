@@ -1,3 +1,10 @@
+/*
+ * Script Name: VersionText.cs
+ * Author: Mason Prather
+ * Description: Version Text provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using TMPro;
 using UnityEngine;
 

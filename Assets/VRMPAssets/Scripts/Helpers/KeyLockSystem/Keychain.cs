@@ -1,3 +1,10 @@
+/*
+ * Script Name: Keychain.cs
+ * Author: Mason Prather
+ * Description: Keychain provides key/keychain/lock data structures for gated interactable behavior.
+ * Project Role: Interaction helper used by keyed scene objects.
+ */
+
 using System.Collections.Generic;
 
 namespace UnityEngine.XR.Content.Interaction

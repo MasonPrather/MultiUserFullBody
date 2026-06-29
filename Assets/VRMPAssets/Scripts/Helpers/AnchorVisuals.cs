@@ -1,3 +1,10 @@
+/*
+ * Script Name: AnchorVisuals.cs
+ * Author: Mason Prather
+ * Description: Anchor Visuals provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit.Utilities.Tweenables.Primitives;

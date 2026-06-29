@@ -1,3 +1,10 @@
+/*
+ * Script Name: CalloutGazeController.cs
+ * Author: Mason Prather
+ * Description: Callout Gaze Controller controls local and remote player presentation, name tags, hand poses, HUD notifications, and appearance controls.
+ * Project Role: Player presentation layer for shared VR sessions.
+ */
+
 using System;
 using UnityEngine;
 using UnityEngine.Events;

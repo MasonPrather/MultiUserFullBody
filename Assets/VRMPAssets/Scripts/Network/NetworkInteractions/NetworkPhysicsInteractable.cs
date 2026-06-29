@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkPhysicsInteractable.cs
+ * Author: Mason Prather
+ * Description: Network Physics Interactable synchronizes XR interactable ownership and socket behavior across Netcode clients.
+ * Project Role: Network interaction layer for shared grabbable and socketed objects.
+ */
+
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;

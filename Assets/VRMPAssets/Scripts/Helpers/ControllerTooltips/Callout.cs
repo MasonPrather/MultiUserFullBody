@@ -1,3 +1,10 @@
+/*
+ * Script Name: Callout.cs
+ * Author: Mason Prather
+ * Description: Callout controls controller callout and tooltip positioning used by the VR interaction UI.
+ * Project Role: Instructional UI support for VR controllers and hand-menu interactions.
+ */
+
 using System.Collections;
 using UnityEngine;
 

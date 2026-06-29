@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_PhonePanelRayInputSender.cs
+ * Author: Mason Prather
+ * Description: Converts Quest ray selections on the phone mirror panel into normalized touch messages sent to the mirrored phone.
+ * Project Role: Input bridge for interacting with the phone mirror surface from VR.
+ * Key Inputs: RayInteractor state, selection events, panel RectTransform/collider, layer mask, and WebRTC input channel availability.
+ * Key Outputs: Touch down/move/up JSON messages sent through M_PhoneMirrorQuestWebRTC.
+ */
+
 using System;
 using Oculus.Interaction;
 using UnityEngine;

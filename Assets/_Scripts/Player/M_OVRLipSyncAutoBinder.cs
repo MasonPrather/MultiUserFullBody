@@ -1,4 +1,12 @@
-// Assets/_Scripts/Player/M_OVRLipSyncAutoBinder.cs
+/*
+ * Script Name: M_OVRLipSyncAutoBinder.cs
+ * Author: Mason Prather
+ * Description: Binds an OVRLipSyncContextMorphTarget to a Ready Player Me face mesh by matching OVR viseme names to available blendshape indices.
+ * Project Role: Automatic lip-sync setup helper for loaded Ready Player Me avatars.
+ * Key Inputs: Face SkinnedMeshRenderer blendshape names and OVR lip-sync component state.
+ * Key Outputs: Configured visemeToBlendTargets, laughter blend target, smoothing settings, and editor diagnostics.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,9 +15,11 @@ using UnityEngine;
 [DefaultExecutionOrder(1000)]
 public class M_OVRLipSyncAutoBinder : MonoBehaviour
 {
-    [SerializeField] private OVRLipSyncContextMorphTarget lipSyncMorph; // optional, auto-gets if null
+    [SerializeField] private OVRLipSyncContextMorphTarget lipSyncMorph;
 
-    // Call after the RPM avatar is loaded and you have its face SkinnedMeshRenderer
+    /// <summary>
+    /// Binds OVR lip-sync visemes after the RPM face SkinnedMeshRenderer is available.
+    /// </summary>
     public void Bind(SkinnedMeshRenderer faceMesh)
     {
         if (!faceMesh) { Debug.LogWarning("[LipSyncBinder] No face mesh provided."); return; }
@@ -29,7 +39,7 @@ public class M_OVRLipSyncAutoBinder : MonoBehaviour
             nameToIndex[Normalize(raw)] = i;
         }
 
-        // OVR viseme order (15)
+        // OVR lip-sync exposes 15 viseme channels in this order.
         string[] ovr = { "sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "ih", "oh", "ou" };
 
         int[] map = new int[ovr.Length];
@@ -46,13 +56,12 @@ public class M_OVRLipSyncAutoBinder : MonoBehaviour
         }
         lipSyncMorph.visemeToBlendTargets = map;
 
-        // Laughter target (optional)
+        // Laughter is mapped to the nearest available smile-oriented blendshape.
         lipSyncMorph.laughterBlendTarget = FindFirstIndex(nameToIndex, new[]
         {
             "laughter","mouthSmile","mouthSmile_L","mouthSmile_R","smile","smileOpen"
         });
 
-        // Defaults (like your inspector)
         lipSyncMorph.laughterThreshold = 0.5f;
         lipSyncMorph.laughterMultiplier = 1.5f;
         lipSyncMorph.smoothAmount = 70;
@@ -82,9 +91,9 @@ public class M_OVRLipSyncAutoBinder : MonoBehaviour
         for (int i = 0; i < ctx.visemeToBlendTargets.Length; i++)
         {
             int bi = ctx.visemeToBlendTargets[i];
-            string name = (bi >= 0 && bi < mesh.blendShapeCount) ? mesh.GetBlendShapeName(bi) : "—";
-            Debug.Log($"[LipSyncBinder] {ovr[i],3} → index {bi} ({name})");
+            string name = (bi >= 0 && bi < mesh.blendShapeCount) ? mesh.GetBlendShapeName(bi) : "-";
+            Debug.Log($"[LipSyncBinder] {ovr[i],3} -> index {bi} ({name})");
         }
-        Debug.Log($"[LipSyncBinder] laughter → {ctx.laughterBlendTarget}");
+        Debug.Log($"[LipSyncBinder] laughter -> {ctx.laughterBlendTarget}");
     }
 }

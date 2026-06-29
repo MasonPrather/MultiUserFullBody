@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_OVRContinuousLocomotion.cs
+ * Author: Mason Prather
+ * Description: Implements headset-relative continuous locomotion and gravity for the local OVR rig using controller input and CharacterController movement.
+ * Project Role: Optional movement controller for Quest scenes that use OVR camera rigs.
+ * Key Inputs: OVR controller axes/buttons, headset yaw, CharacterController state, speed/gravity configuration.
+ * Key Outputs: Local rig movement, grounded velocity state, and optional snap-turn rotation.
+ */
+
 using UnityEngine;
 
 /// <summary>
@@ -120,7 +129,7 @@ public class M_OVRContinuousLocomotion : MonoBehaviour
     {
         // ---- Ground check via spherecast ----
         Vector3 feet = transform.position + Vector3.up * (_cc.radius + 0.05f);
-        float castDist = _cc.stepOffset + 0.25f; // short cast just under feet
+        float castDist = _cc.stepOffset + 0.25f;
         bool wasGrounded = _isGrounded;
         _isGrounded = Physics.SphereCast(
             feet,

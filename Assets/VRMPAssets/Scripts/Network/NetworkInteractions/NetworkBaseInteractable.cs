@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkBaseInteractable.cs
+ * Author: Mason Prather
+ * Description: Network Base Interactable synchronizes XR interactable ownership and socket behavior across Netcode clients.
+ * Project Role: Network interaction layer for shared grabbable and socketed objects.
+ */
+
 using UnityEngine;
 using Unity.Netcode;
 using UnityEngine.XR.Interaction.Toolkit;

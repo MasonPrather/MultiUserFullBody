@@ -1,3 +1,10 @@
+/*
+ * Script Name: Breakable.cs
+ * Author: Mason Prather
+ * Description: Breakable supports the Whack-A-Pig mini-game, including networked target spawning and breakable target behavior.
+ * Project Role: Mini-game gameplay logic for networked activity spaces.
+ */
+
 using UnityEngine.Events;
 
 namespace UnityEngine.XR.Content.Interaction

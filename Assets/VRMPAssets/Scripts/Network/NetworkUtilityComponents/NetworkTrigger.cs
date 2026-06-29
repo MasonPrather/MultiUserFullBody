@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkTrigger.cs
+ * Author: Mason Prather
+ * Description: Network Trigger provides low-level network utility components for transforms, triggers, and Netcode-driven UI behavior.
+ * Project Role: Network support layer for shared scene mechanics.
+ */
+
 using UnityEngine;
 using Unity.Netcode;
 using Unity.XR.CoreUtils;

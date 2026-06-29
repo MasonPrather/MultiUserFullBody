@@ -1,3 +1,12 @@
+/*
+ * Script Name: XRINetworkGameManager.cs
+ * Author: Mason Prather
+ * Description: XRINetwork Game Manager manages authentication, sessions/lobbies, transports, voice chat, and high-level multiplayer connection state.
+ * Project Role: Multiplayer services layer for shared VR sessions.
+ * Key Inputs: Serialized scene references, Unity lifecycle events, and related subsystem state.
+ * Key Outputs: Runtime state updates, scene object changes, UI updates, network messages, or diagnostic logs as appropriate for the component.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -141,8 +150,8 @@ namespace XRMultiplayer
         }
 
         /// <summary>
-        /// Auto connects to the player to a networked game session once they connect to a lobby.
-        /// Uncheck if you want to handle joining a networked session separately.
+        /// Auto-connects the player to a networked game session after lobby connection.
+        /// Disable this when a scene-specific flow controls session joining.
         /// </summary>
         public bool autoConnectOnLobbyJoin { get => m_AutoConnectOnLobbyJoin; }
         [SerializeField] bool m_AutoConnectOnLobbyJoin = true;
@@ -237,8 +246,8 @@ namespace XRMultiplayer
             if (!CloudProjectSettings.projectBound && !skipCloudCheck)
             {
                 Utils.Log($"{k_DebugPrepend}Project has not been linked to Unity Cloud." +
-                               "\nThe VR Multiplayer Template utilizes Unity Gaming Services and must be linked to Unity Cloud." +
-                               "\nGo to <b>Settings -> Project Settings -> Services</b> and link your project.", 2);
+                               "\nMultiUserFullBody uses Unity Gaming Services and must be linked to Unity Cloud." +
+                               "\nOpen <b>Settings -> Project Settings -> Services</b> and link the project.", 2);
             }
 #endif
 

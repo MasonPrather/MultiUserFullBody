@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkInteractableSpawnerEditor.cs
+ * Author: Mason Prather
+ * Description: Network Interactable Spawner Editor spawns configured network interactables and draws/editor-previews their spawn volumes.
+ * Project Role: Networked object-spawning support for shared scene interactables.
+ */
+
 using UnityEngine.UIElements;
 using UnityEngine.XR.Templates.VRMultiplayer;
 using static UnityEngine.XR.Templates.VRMultiplayer.NetworkInteractableSpawner;

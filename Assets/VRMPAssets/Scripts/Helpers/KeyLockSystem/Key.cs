@@ -1,3 +1,10 @@
+/*
+ * Script Name: Key.cs
+ * Author: Mason Prather
+ * Description: Key provides key/keychain/lock data structures for gated interactable behavior.
+ * Project Role: Interaction helper used by keyed scene objects.
+ */
+
 namespace UnityEngine.XR.Content.Interaction
 {
     /// <summary>

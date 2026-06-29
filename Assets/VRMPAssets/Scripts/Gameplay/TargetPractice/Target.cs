@@ -1,3 +1,10 @@
+/*
+ * Script Name: Target.cs
+ * Author: Mason Prather
+ * Description: Target supports target-practice projectiles, targets, and target reset behavior.
+ * Project Role: Interactive sandbox feature for shared VR rooms.
+ */
+
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;

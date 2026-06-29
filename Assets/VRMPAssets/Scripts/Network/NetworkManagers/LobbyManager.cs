@@ -1,3 +1,12 @@
+/*
+ * Script Name: LobbyManager.cs
+ * Author: Mason Prather
+ * Description: Lobby Manager manages authentication, sessions/lobbies, transports, voice chat, and high-level multiplayer connection state.
+ * Project Role: Multiplayer services layer for shared VR sessions.
+ * Key Inputs: Serialized scene references, Unity lifecycle events, and related subsystem state.
+ * Key Outputs: Runtime state updates, scene object changes, UI updates, network messages, or diagnostic logs as appropriate for the component.
+ */
+
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Services.Lobbies.Models;
@@ -198,7 +207,7 @@ namespace XRMultiplayer
 
 
                 m_Status.Value = "Creating Lobby";
-                // Creates the Lobby with the specified max players and lobby options. Currently just naming "General Lobby"
+                // Lobby names default to the local player room label when no explicit room name is provided.
                 string lobbyName = string.IsNullOrEmpty(roomName) ? $"{XRINetworkGameManager.LocalPlayerName.Value}'s Room" : $"{roomName}";
 
                 // RATE LIMIT: 2 request per 6 seconds
@@ -447,7 +456,7 @@ namespace XRMultiplayer
         public static async Task<QueryResponse> GetLobbiesAsync()
         {
             // Use these options to apply things like filters, ordering, etc...
-            // Additionally you can add your own filters like below to have more control over the data.
+            // Additional filters can be added here when study sessions require narrower lobby queries.
             QueryLobbiesOptions lobbyOptions = new QueryLobbiesOptions();
             return await LobbyService.Instance.QueryLobbiesAsync(lobbyOptions);
         }

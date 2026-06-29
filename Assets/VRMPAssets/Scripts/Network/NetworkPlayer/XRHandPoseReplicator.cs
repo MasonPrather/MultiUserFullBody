@@ -1,3 +1,12 @@
+/*
+ * Script Name: XRHandPoseReplicator.cs
+ * Author: Mason Prather
+ * Description: XRHand Pose Replicator represents synchronized avatar, hand pose, voice, shared media, and player metadata behavior for networked participants.
+ * Project Role: Networked player layer for multiplayer embodiment and media sharing.
+ * Key Inputs: Serialized scene references, Unity lifecycle events, and related subsystem state.
+ * Key Outputs: Runtime state updates, scene object changes, UI updates, network messages, or diagnostic logs as appropriate for the component.
+ */
+
 using System.Collections.Generic;
 using Unity.Netcode;
 using Unity.XR.CoreUtils;
@@ -513,7 +522,7 @@ namespace XRMultiplayer
 
         void SyncControllerTracking()
         {
-            //TODO: Sync Controller Input and map to hand poses
+            // Controller input-to-hand-pose mapping remains outside the current hand tracking path.
             if (IsOwner)
             {
                 SetNetworkControllerFingerSync();

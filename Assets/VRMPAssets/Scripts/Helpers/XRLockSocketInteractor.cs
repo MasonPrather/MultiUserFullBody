@@ -1,3 +1,10 @@
+/*
+ * Script Name: XRLockSocketInteractor.cs
+ * Author: Mason Prather
+ * Description: XRLock Socket Interactor provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 
 
 namespace UnityEngine.XR.Content.Interaction

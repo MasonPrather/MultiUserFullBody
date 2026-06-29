@@ -1,3 +1,10 @@
+/*
+ * Script Name: RoomMusic.cs
+ * Author: Mason Prather
+ * Description: Room Music controls shared-room gameplay objects such as music, fans, gravity zones, and network object removal.
+ * Project Role: Scene gameplay support for the shared VR environment.
+ */
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;

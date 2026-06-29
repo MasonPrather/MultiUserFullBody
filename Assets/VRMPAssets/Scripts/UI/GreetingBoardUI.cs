@@ -1,3 +1,10 @@
+/*
+ * Script Name: GreetingBoardUI.cs
+ * Author: Mason Prather
+ * Description: Greeting Board UI controls local menu, tooltip, popout, greeting, and world-canvas UI behavior.
+ * Project Role: User interface layer for shared VR scenes.
+ */
+
 using TMPro;
 using UnityEngine;
 using XRMultiplayer;

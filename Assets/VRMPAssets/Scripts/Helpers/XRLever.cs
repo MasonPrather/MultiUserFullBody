@@ -1,3 +1,10 @@
+/*
+ * Script Name: XRLever.cs
+ * Author: Mason Prather
+ * Description: XRLever provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using UnityEngine.Events;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;

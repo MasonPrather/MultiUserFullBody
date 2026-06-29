@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_RestClient.cs
+ * Author: Mason Prather
+ * Description: Maintains the discovered server base URL and posts raw JPEG image bytes to the Quest photo upload endpoint.
+ * Project Role: HTTP client used by companion upload scenes after UDP discovery resolves the headset address.
+ * Key Inputs: Discovered IP/port and JPEG byte payloads.
+ * Key Outputs: UnityWebRequest POST calls to /upload-photo and response/error logs.
+ */
+
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;

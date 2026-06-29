@@ -1,3 +1,10 @@
+/*
+ * Script Name: ScoreboardSlot.cs
+ * Author: Mason Prather
+ * Description: Scoreboard Slot coordinates mini-game state, scoring, player queues, and scoreboard presentation.
+ * Project Role: Mini-game framework for optional shared VR activities.
+ */
+
 using System;
 using TMPro;
 using UnityEngine;

@@ -1,3 +1,10 @@
+/*
+ * Script Name: AntiGravityZone.cs
+ * Author: Mason Prather
+ * Description: Anti Gravity Zone controls shared-room gameplay objects such as music, fans, gravity zones, and network object removal.
+ * Project Role: Scene gameplay support for the shared VR environment.
+ */
+
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion.Gravity;

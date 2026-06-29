@@ -1,3 +1,12 @@
+/*
+ * Script Name: VoiceChatManager.cs
+ * Author: Mason Prather
+ * Description: Manages Vivox channel login, player voice state, participant energy, and positional audio updates for shared VR sessions.
+ * Project Role: Voice communication layer for multiplayer embodiment and participant awareness.
+ * Key Inputs: Vivox service state, microphone permission state, XRINetworkPlayer instances, and positional audio settings.
+ * Key Outputs: Voice connection state, per-player voice energy, mute/squelch state, and participant dictionaries.
+ */
+
 using System.Collections.Generic;
 using System.Text;
 using Unity.Netcode;
@@ -14,7 +23,7 @@ using UnityEditor;
 namespace XRMultiplayer
 {
     /// <summary>
-    /// Manages the Vivox Voice Chat functionality in the VR Multiplayer template.
+    /// Manages Vivox voice chat for the shared VR multiplayer scenes.
     /// </summary>
     public class VoiceChatManager : MonoBehaviour
     {
@@ -24,6 +33,8 @@ namespace XRMultiplayer
         const string k_MicrophonePersmissionDialogue = "Microphone Permissions Required.";
 
         /// <summary>
+        /// Shared microphone permission state used by voice UI.
+        /// </summary>
         public static BindableVariable<bool> s_HasMicrophonePermission = new(false);
         /// <summary>
         /// Dictionary of all the <see cref="XRINetworkPlayer"/>'s in the voice chat.
@@ -31,7 +42,7 @@ namespace XRMultiplayer
         public static Dictionary<string, XRINetworkPlayer> m_PlayersDictionary = new();
 
         /// <summary>
-        /// This is the bindable variable for subscribing to the local player muting themselves.
+        /// Bindable state for local self-mute changes.
         /// </summary>
         public IReadOnlyBindableVariable<bool> selfMuted
         {
@@ -40,7 +51,7 @@ namespace XRMultiplayer
         readonly BindableVariable<bool> m_SelfMuted = new(false);
 
         /// <summary>
-        /// This is the bindable variable for subscribing to the connection status of the voice chat service.
+        /// Bindable state for Vivox connection status messages.
         /// </summary>
         public IReadOnlyBindableVariable<string> connectionStatus
         {
@@ -49,9 +60,9 @@ namespace XRMultiplayer
         readonly BindableVariable<string> m_ConnectionStatus = new();
 
         /// <summary>
-        /// The chat capability of the channel, by default it should Audio Only.
+        /// Chat capability used when joining the Vivox channel.
         /// </summary>
-        [SerializeField, Tooltip("The chat capability of the channel, by default it should Audio Only")] ChatCapability m_ChatCapability = ChatCapability.AudioOnly;
+        [SerializeField, Tooltip("Chat capability used when joining the Vivox channel.")] ChatCapability m_ChatCapability = ChatCapability.AudioOnly;
 
         /// <summary>
         /// Update frequency for audio callbacks.

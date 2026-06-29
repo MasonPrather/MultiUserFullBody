@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_NetPlayer.cs
+ * Author: Mason Prather
+ * Description: Stores per-player replicated avatar metadata, including the Ready Player Me avatar URL selected by the owning client.
+ * Project Role: Network metadata component attached to player prefabs.
+ * Key Inputs: PlayerPrefs RPM_URL value and serialized fallback avatar URL.
+ * Key Outputs: Owner-written NetworkVariable containing the avatar URL.
+ */
+
 using Unity.Netcode;
 using Unity.Collections;
 using UnityEngine;

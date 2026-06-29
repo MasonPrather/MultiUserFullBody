@@ -1,3 +1,10 @@
+/*
+ * Script Name: ResetVideoOnLoop.cs
+ * Author: Mason Prather
+ * Description: Reset Video On Loop provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using UnityEngine;
 using UnityEngine.Video;
 

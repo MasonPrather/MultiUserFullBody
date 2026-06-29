@@ -1,3 +1,10 @@
+/*
+ * Script Name: XRKnob.cs
+ * Author: Mason Prather
+ * Description: XRKnob provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using System;
 using UnityEngine.Events;
 using UnityEngine.XR.Interaction.Toolkit;

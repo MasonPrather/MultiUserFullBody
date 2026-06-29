@@ -1,3 +1,10 @@
+/*
+ * Script Name: OfflineMenu.cs
+ * Author: Mason Prather
+ * Description: Offline Menu controls local menu, tooltip, popout, greeting, and world-canvas UI behavior.
+ * Project Role: User interface layer for shared VR scenes.
+ */
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;

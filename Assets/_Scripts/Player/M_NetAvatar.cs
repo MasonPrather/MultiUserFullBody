@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_NetAvatar.cs
+ * Author: Mason Prather
+ * Description: Loads each networked Ready Player Me avatar, binds VRIK to replicated IK targets, connects the avatar face mesh to M_NetFaceMirror, and applies ownership-specific visibility.
+ * Project Role: Remote and owner network avatar presentation for multiplayer sessions.
+ * Key Inputs: Networked avatar URL, M_NetPoseDriver IK targets, Ready Player Me loader callbacks, and ownership state.
+ * Key Outputs: Spawned network avatar, VRIK setup, face mirror target binding, layer assignment, and owner-local renderer suppression.
+ */
+
 using System.Collections;
 using Unity.Collections;
 using UnityEngine;
@@ -9,12 +18,9 @@ using System;
 /// <summary>
 /// M_NetAvatar
 /// 
-/// REMOTE/NETWORK visual (also exists for the owner, but you can hide it):
-/// - Loads RPM avatar under avatarRoot
-/// - Adds VRIK on the avatar and binds to IKTargets (driven by M_NetPoseDriver)
-/// - Waits for first remote pose (via M_NetPoseDriver) before enabling VRIK
-/// - Finds the avatar's face SkinnedMeshRenderer and binds it to M_NetFaceMirror
-/// - Sets layer per ownership (LocalAvatar / RemoteAvatar)
+/// Loads the Ready Player Me avatar used for network presentation, wires VRIK
+/// to replicated IK targets, waits for remote pose data before enabling IK, and
+/// binds the avatar face mesh to M_NetFaceMirror.
 /// </summary>
 [DisallowMultipleComponent]
 public class M_NetAvatar : NetworkBehaviour

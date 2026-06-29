@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_PairingCodeProvider.cs
+ * Author: Mason Prather
+ * Description: Generates and stores the short pairing code used by phone mirroring and local signaling.
+ * Project Role: Pairing credential source for TCP signaling between the Quest host and companion phone.
+ * Key Inputs: Serialized code length and optional fixed code value.
+ * Key Outputs: Runtime pairing code exposed to signaling and UI presenters.
+ */
+
 using System.Security.Cryptography;
 using UnityEngine;
 

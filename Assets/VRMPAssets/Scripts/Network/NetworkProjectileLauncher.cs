@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkProjectileLauncher.cs
+ * Author: Mason Prather
+ * Description: Network Projectile Launcher synchronizes networked scene objects, player-facing tools, and shared interaction helpers.
+ * Project Role: Network support layer for shared VR scenes.
+ */
+
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;

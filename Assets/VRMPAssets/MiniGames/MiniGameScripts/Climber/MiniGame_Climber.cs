@@ -1,3 +1,10 @@
+/*
+ * Script Name: MiniGame_Climber.cs
+ * Author: Mason Prather
+ * Description: Mini Game  Climber supports the climbing mini-game retained in the shared VR environment.
+ * Project Role: Mini-game gameplay logic for networked activity spaces.
+ */
+
 using System.Collections.Generic;
 using UnityEngine;
 

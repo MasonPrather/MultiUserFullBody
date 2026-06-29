@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkedWhackAPig.cs
+ * Author: Mason Prather
+ * Description: Networked Whack APig supports the Whack-A-Pig mini-game, including networked target spawning and breakable target behavior.
+ * Project Role: Mini-game gameplay logic for networked activity spaces.
+ */
+
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;

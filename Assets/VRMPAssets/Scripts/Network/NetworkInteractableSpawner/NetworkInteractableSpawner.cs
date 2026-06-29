@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkInteractableSpawner.cs
+ * Author: Mason Prather
+ * Description: Network Interactable Spawner spawns configured network interactables and draws/editor-previews their spawn volumes.
+ * Project Role: Networked object-spawning support for shared scene interactables.
+ */
+
 using System;
 using Unity.Netcode;
 using XRMultiplayer;

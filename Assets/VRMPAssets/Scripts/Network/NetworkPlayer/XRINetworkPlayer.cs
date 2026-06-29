@@ -1,8 +1,19 @@
+/*
+ * Script Name: XRINetworkPlayer.cs
+ * Author: Mason Prather
+ * Description: XRINetwork Player represents synchronized avatar, hand pose, voice, shared media, and player metadata behavior for networked participants.
+ * Project Role: Networked player layer for multiplayer embodiment and media sharing.
+ * Key Inputs: Serialized scene references, Unity lifecycle events, and related subsystem state.
+ * Key Outputs: Runtime state updates, scene object changes, UI updates, network messages, or diagnostic logs as appropriate for the component.
+ */
+
 using UnityEngine;
 using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using Unity.XR.CoreUtils;
 using Unity.Collections;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Services.Vivox;
 using Unity.XR.CoreUtils.Bindings.Variables;
@@ -70,6 +81,11 @@ namespace XRMultiplayer
         /// Raised when a shared media upload has been received and reconstructed on this client.
         /// </summary>
         public static event Action<string, byte[]> onSharedMediaReceived;
+
+        /// <summary>
+        /// Raised after the local network player has spawned and finished local setup.
+        /// </summary>
+        public static event Action onLocalPlayerSpawned;
 
         /// <summary>
         /// Bindable Variable used for other clients to mute this user locally.
@@ -172,13 +188,26 @@ namespace XRMultiplayer
         /// </summary>
         protected Vector3 m_PrevHeadPos;
 
-        // Keep payloads comfortably below common transport limits so image sharing is more reliable.
-        const int k_SharedMediaChunkSize = 1024;
+        // The active UTP scenes currently use a 6144-byte max payload. Keep RPC chunk data
+        // comfortably below that because NGO adds message/RPC metadata around the byte array.
+        const int k_MaxSharedMediaChunkSize = 4 * 1024;
+        const int k_MinSharedMediaChunkSize = 512;
+        const int k_SharedMediaRpcOverheadReserve = 1024;
+
+        [Header("Shared Media Sync"), SerializeField, Tooltip("Maximum image chunks sent per frame by the uploading client and relay.")]
+        int m_SharedMediaChunksPerFrame = 4;
+
+        [SerializeField, Tooltip("If true, log shared-media transfer progress.")]
+        bool m_LogSharedMediaSync = true;
 
         ulong m_LocalSharedMediaUploadId;
         readonly HashSet<ulong> m_LocalSharedMediaEchoSkips = new HashSet<ulong>();
         readonly Dictionary<ulong, PendingSharedMediaUpload> m_PendingServerSharedMediaUploads = new Dictionary<ulong, PendingSharedMediaUpload>();
         readonly Dictionary<ulong, PendingSharedMediaUpload> m_PendingClientSharedMediaDownloads = new Dictionary<ulong, PendingSharedMediaUpload>();
+        static ulong s_ServerSharedMediaDownloadId = 1UL << 63;
+        static bool s_HasLatestSharedMedia;
+        static FixedString128Bytes s_LatestSharedMediaFileName;
+        static byte[] s_LatestSharedMediaBytes;
 
         class PendingSharedMediaUpload
         {
@@ -342,8 +371,12 @@ namespace XRMultiplayer
                 }
 
                 SetupLocalPlayer();
+                onLocalPlayerSpawned?.Invoke();
             }
             CompleteSetup();
+
+            if (CanRelayLatestSharedMediaToOwner())
+                StartCoroutine(SendLatestSharedMediaToOwnerWhenReady());
         }
 
         public override void OnNetworkDespawn()
@@ -537,23 +570,83 @@ namespace XRMultiplayer
             }
 
             m_LocalSharedMediaUploadId++;
-            m_LocalSharedMediaEchoSkips.Add(m_LocalSharedMediaUploadId);
 
             var fixedFileName = new FixedString128Bytes(string.IsNullOrWhiteSpace(fileName) ? "Uploaded photo" : fileName);
-            int totalChunks = Mathf.Max(1, Mathf.CeilToInt(imageBytes.Length / (float)k_SharedMediaChunkSize));
+            int chunkSize = GetSharedMediaChunkSize();
+            int totalChunks = Mathf.Max(1, Mathf.CeilToInt(imageBytes.Length / (float)chunkSize));
 
-            BeginSharedMediaUploadServerRpc(m_LocalSharedMediaUploadId, fixedFileName, imageBytes.Length, totalChunks);
+            if (IsDistributedAuthoritySession())
+            {
+                CacheLatestSharedMedia(fixedFileName, imageBytes);
+                m_LocalSharedMediaEchoSkips.Add(m_LocalSharedMediaUploadId);
+                StartCoroutine(RelaySharedMediaToClientsCoroutine(m_LocalSharedMediaUploadId, fixedFileName, imageBytes));
+                return;
+            }
+
+            if (ShouldSkipLocalSharedMediaEcho())
+                m_LocalSharedMediaEchoSkips.Add(m_LocalSharedMediaUploadId);
+
+            StartCoroutine(BroadcastSharedMediaCoroutine(m_LocalSharedMediaUploadId, fixedFileName, imageBytes, chunkSize, totalChunks));
+        }
+
+        IEnumerator BroadcastSharedMediaCoroutine(ulong uploadId, FixedString128Bytes fixedFileName, byte[] imageBytes, int chunkSize, int totalChunks)
+        {
+            BeginSharedMediaUploadServerRpc(uploadId, fixedFileName, imageBytes.Length, totalChunks);
+
+            int chunksSentThisFrame = 0;
+            int chunksPerFrame = Mathf.Max(1, m_SharedMediaChunksPerFrame);
 
             for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++)
             {
-                int sourceOffset = chunkIndex * k_SharedMediaChunkSize;
-                int chunkLength = Mathf.Min(k_SharedMediaChunkSize, imageBytes.Length - sourceOffset);
+                int sourceOffset = chunkIndex * chunkSize;
+                int chunkLength = Mathf.Min(chunkSize, imageBytes.Length - sourceOffset);
                 byte[] chunk = new byte[chunkLength];
                 Buffer.BlockCopy(imageBytes, sourceOffset, chunk, 0, chunkLength);
-                SubmitSharedMediaChunkServerRpc(m_LocalSharedMediaUploadId, chunkIndex, chunk);
+                SubmitSharedMediaChunkServerRpc(uploadId, chunkIndex, chunk);
+
+                chunksSentThisFrame++;
+                if (chunksSentThisFrame >= chunksPerFrame)
+                {
+                    chunksSentThisFrame = 0;
+                    yield return null;
+                }
             }
 
-            CompleteSharedMediaUploadServerRpc(m_LocalSharedMediaUploadId);
+            CompleteSharedMediaUploadServerRpc(uploadId);
+
+            if (m_LogSharedMediaSync)
+                Utils.Log($"Shared media upload queued: {fixedFileName} ({imageBytes.Length} bytes, {totalChunks} chunks at {chunkSize} bytes/chunk).");
+        }
+
+        bool ShouldSkipLocalSharedMediaEcho()
+        {
+            NetworkManager networkManager = this.NetworkManager;
+            return networkManager != null &&
+                   !networkManager.DistributedAuthorityMode &&
+                   !networkManager.IsServer;
+        }
+
+        bool IsDistributedAuthoritySession()
+        {
+            NetworkManager networkManager = this.NetworkManager != null ? this.NetworkManager : NetworkManager.Singleton;
+            return networkManager != null && networkManager.DistributedAuthorityMode;
+        }
+
+        bool CanRelayLatestSharedMediaToOwner()
+        {
+            NetworkManager networkManager = this.NetworkManager != null ? this.NetworkManager : NetworkManager.Singleton;
+            if (networkManager != null && networkManager.DistributedAuthorityMode)
+                return networkManager.LocalClientId == networkManager.CurrentSessionOwner && !IsOwner;
+
+            return IsServer;
+        }
+
+        XRINetworkPlayer ResolveSharedMediaRelayPlayer()
+        {
+            if (IsDistributedAuthoritySession() && LocalPlayer != null && LocalPlayer.IsSpawned)
+                return LocalPlayer;
+
+            return this;
         }
 
         bool IsValidSharedMediaSender(ServerRpcParams rpcParams)
@@ -582,7 +675,12 @@ namespace XRMultiplayer
                 return;
 
             if (!m_PendingServerSharedMediaUploads.TryGetValue(uploadId, out var pendingUpload))
+            {
+                if (m_LogSharedMediaSync)
+                    Utils.Log($"Shared media server chunk ignored because upload {uploadId} was not started.", 1);
+
                 return;
+            }
 
             pendingUpload.StoreChunk(chunkIndex, chunkData);
             TryFinalizeSharedMediaUpload(uploadId);
@@ -595,7 +693,12 @@ namespace XRMultiplayer
                 return;
 
             if (!m_PendingServerSharedMediaUploads.TryGetValue(uploadId, out var pendingUpload))
+            {
+                if (m_LogSharedMediaSync)
+                    Utils.Log($"Shared media upload {uploadId} could not complete because it was not started.", 1);
+
                 return;
+            }
 
             pendingUpload.completionRequested = true;
             TryFinalizeSharedMediaUpload(uploadId);
@@ -611,45 +714,146 @@ namespace XRMultiplayer
 
             byte[] combinedImageBytes = pendingUpload.Combine();
             var fileName = pendingUpload.fileName;
-            int totalChunks = pendingUpload.totalChunks;
 
             m_PendingServerSharedMediaUploads.Remove(uploadId);
 
-            BeginSharedMediaDownloadClientRpc(uploadId, fileName, combinedImageBytes.Length, totalChunks);
+            CacheLatestSharedMedia(fileName, combinedImageBytes);
+            StartCoroutine(RelaySharedMediaToClientsCoroutine(uploadId, fileName, combinedImageBytes));
+        }
+
+        static void CacheLatestSharedMedia(FixedString128Bytes fileName, byte[] combinedImageBytes)
+        {
+            if (combinedImageBytes == null || combinedImageBytes.Length == 0)
+                return;
+
+            s_HasLatestSharedMedia = true;
+            s_LatestSharedMediaFileName = fileName;
+            s_LatestSharedMediaBytes = new byte[combinedImageBytes.Length];
+            Buffer.BlockCopy(combinedImageBytes, 0, s_LatestSharedMediaBytes, 0, combinedImageBytes.Length);
+        }
+
+        static ulong GetNextServerSharedMediaDownloadId()
+        {
+            s_ServerSharedMediaDownloadId++;
+            if (s_ServerSharedMediaDownloadId == 0)
+                s_ServerSharedMediaDownloadId = 1UL << 63;
+
+            return s_ServerSharedMediaDownloadId;
+        }
+
+        IEnumerator SendLatestSharedMediaToOwnerWhenReady()
+        {
+            if (!s_HasLatestSharedMedia || s_LatestSharedMediaBytes == null || s_LatestSharedMediaBytes.Length == 0)
+                yield break;
+
+            // Let the target client's scene receiver and local-player listeners settle before replaying session state.
+            yield return null;
+            yield return null;
+
+            if (!IsSpawned || !CanRelayLatestSharedMediaToOwner() || !s_HasLatestSharedMedia || s_LatestSharedMediaBytes == null || s_LatestSharedMediaBytes.Length == 0)
+                yield break;
+
+            byte[] latestBytes = new byte[s_LatestSharedMediaBytes.Length];
+            Buffer.BlockCopy(s_LatestSharedMediaBytes, 0, latestBytes, 0, latestBytes.Length);
+
+            XRINetworkPlayer relayPlayer = ResolveSharedMediaRelayPlayer();
+            if (relayPlayer == null || !relayPlayer.IsSpawned)
+                yield break;
+
+            ulong downloadId = GetNextServerSharedMediaDownloadId();
+            relayPlayer.StartCoroutine(relayPlayer.RelaySharedMediaToClientsCoroutine(downloadId, s_LatestSharedMediaFileName, latestBytes, OwnerClientId));
+        }
+
+        IEnumerator RelaySharedMediaToClientsCoroutine(ulong uploadId, FixedString128Bytes fileName, byte[] combinedImageBytes, ulong? targetClientId = null)
+        {
+            if (combinedImageBytes == null || combinedImageBytes.Length == 0)
+                yield break;
+
+            int chunkSize = GetSharedMediaChunkSize();
+            int totalChunks = Mathf.Max(1, Mathf.CeilToInt(combinedImageBytes.Length / (float)chunkSize));
+
+            BeginSharedMediaDownloadRpc(uploadId, fileName, combinedImageBytes.Length, totalChunks, CreateSharedMediaTargetParams(targetClientId));
+
+            int chunksSentThisFrame = 0;
+            int chunksPerFrame = Mathf.Max(1, m_SharedMediaChunksPerFrame);
 
             for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++)
             {
-                int sourceOffset = chunkIndex * k_SharedMediaChunkSize;
-                int chunkLength = Mathf.Min(k_SharedMediaChunkSize, combinedImageBytes.Length - sourceOffset);
+                int sourceOffset = chunkIndex * chunkSize;
+                int chunkLength = Mathf.Min(chunkSize, combinedImageBytes.Length - sourceOffset);
                 byte[] chunk = new byte[chunkLength];
                 Buffer.BlockCopy(combinedImageBytes, sourceOffset, chunk, 0, chunkLength);
-                SubmitSharedMediaChunkClientRpc(uploadId, chunkIndex, chunk);
+                SubmitSharedMediaChunkRpc(uploadId, chunkIndex, chunk, CreateSharedMediaTargetParams(targetClientId));
+
+                chunksSentThisFrame++;
+                if (chunksSentThisFrame >= chunksPerFrame)
+                {
+                    chunksSentThisFrame = 0;
+                    yield return null;
+                }
             }
 
-            CompleteSharedMediaDownloadClientRpc(uploadId);
+            CompleteSharedMediaDownloadRpc(uploadId, CreateSharedMediaTargetParams(targetClientId));
+
+            if (m_LogSharedMediaSync)
+                Utils.Log($"Shared media relayed: {fileName} ({combinedImageBytes.Length} bytes, {totalChunks} chunks at {chunkSize} bytes/chunk).");
         }
 
-        [ClientRpc]
-        void BeginSharedMediaDownloadClientRpc(ulong uploadId, FixedString128Bytes fileName, int totalBytes, int totalChunks)
+        RpcParams CreateSharedMediaTargetParams(ulong? targetClientId)
+        {
+            if (targetClientId.HasValue)
+                return RpcTarget.Single(targetClientId.Value, RpcTargetUse.Temp);
+
+            return RpcTarget.ClientsAndHost;
+        }
+
+        int GetSharedMediaChunkSize()
+        {
+            int chunkSize = k_MaxSharedMediaChunkSize;
+            NetworkManager networkManager = NetworkManager.Singleton;
+
+            if (networkManager != null &&
+                networkManager.NetworkConfig != null &&
+                networkManager.NetworkConfig.NetworkTransport is UnityTransport unityTransport)
+            {
+                int safePayloadBytes = unityTransport.MaxPayloadSize - k_SharedMediaRpcOverheadReserve;
+                chunkSize = Mathf.Min(chunkSize, safePayloadBytes);
+            }
+
+            return Mathf.Max(k_MinSharedMediaChunkSize, chunkSize);
+        }
+
+        [Rpc(SendTo.SpecifiedInParams)]
+        void BeginSharedMediaDownloadRpc(ulong uploadId, FixedString128Bytes fileName, int totalBytes, int totalChunks, RpcParams rpcParams = default)
         {
             m_PendingClientSharedMediaDownloads[uploadId] = new PendingSharedMediaUpload(fileName, totalBytes, totalChunks);
         }
 
-        [ClientRpc]
-        void SubmitSharedMediaChunkClientRpc(ulong uploadId, int chunkIndex, byte[] chunkData)
+        [Rpc(SendTo.SpecifiedInParams)]
+        void SubmitSharedMediaChunkRpc(ulong uploadId, int chunkIndex, byte[] chunkData, RpcParams rpcParams = default)
         {
             if (!m_PendingClientSharedMediaDownloads.TryGetValue(uploadId, out var pendingUpload))
+            {
+                if (m_LogSharedMediaSync)
+                    Utils.Log($"Shared media client chunk ignored because download {uploadId} was not started.", 1);
+
                 return;
+            }
 
             pendingUpload.StoreChunk(chunkIndex, chunkData);
             TryFinalizeSharedMediaDownload(uploadId);
         }
 
-        [ClientRpc]
-        void CompleteSharedMediaDownloadClientRpc(ulong uploadId)
+        [Rpc(SendTo.SpecifiedInParams)]
+        void CompleteSharedMediaDownloadRpc(ulong uploadId, RpcParams rpcParams = default)
         {
             if (!m_PendingClientSharedMediaDownloads.TryGetValue(uploadId, out var pendingUpload))
+            {
+                if (m_LogSharedMediaSync)
+                    Utils.Log($"Shared media download {uploadId} could not complete because it was not started.", 1);
+
                 return;
+            }
 
             pendingUpload.completionRequested = true;
             TryFinalizeSharedMediaDownload(uploadId);
@@ -665,10 +869,21 @@ namespace XRMultiplayer
 
             m_PendingClientSharedMediaDownloads.Remove(uploadId);
 
+            byte[] combinedImageBytes = pendingUpload.Combine();
+            CacheLatestSharedMedia(pendingUpload.fileName, combinedImageBytes);
+
             if (IsOwner && m_LocalSharedMediaEchoSkips.Remove(uploadId))
                 return;
 
-            onSharedMediaReceived?.Invoke(pendingUpload.fileName.ToString(), pendingUpload.Combine());
+            if (onSharedMediaReceived == null)
+            {
+                if (m_LogSharedMediaSync)
+                    Utils.Log($"Shared media received with no scene listener: {pendingUpload.fileName}", 1);
+
+                return;
+            }
+
+            onSharedMediaReceived.Invoke(pendingUpload.fileName.ToString(), combinedImageBytes);
         }
 
         /// <summary>

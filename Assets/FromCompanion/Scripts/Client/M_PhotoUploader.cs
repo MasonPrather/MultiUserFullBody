@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_PhotoUploader.cs
+ * Author: Mason Prather
+ * Description: Runs optional server discovery, opens the phone/client gallery picker, downscales the selected image, previews it locally, and posts JPEG bytes to the Quest upload endpoint.
+ * Project Role: Companion-client upload controller for the local-network photo sharing flow.
+ * Key Inputs: NativeGallery image path, discovery results, upload sizing/quality settings, and optional preview UI references.
+ * Key Outputs: JPEG upload requests, local preview texture, selected filename label, and upload diagnostics.
+ */
+
 using System.Collections;
 using System.IO;
 using UnityEngine;
@@ -132,7 +141,7 @@ public class M_PhotoUploader : MonoBehaviour
             currentSelectedPath = path;
             Debug.Log("[M_PhotoUploader] Selected: " + path);
 
-            // ---- Load + downscale via NativeGallery (keep readable for EncodeToJPG) ----
+            // Keep the selected texture readable so Unity can encode it for upload.
             int maxSize = Mathf.Max(256, maxUploadDimension);
 
             Texture2D tex = NativeGallery.LoadImageAtPath(
@@ -168,10 +177,8 @@ public class M_PhotoUploader : MonoBehaviour
 
             Debug.Log($"[M_PhotoUploader] Loaded tex={tex.width}x{tex.height}");
 
-            // ---- Update local preview UI ----
             UpdateClientPreviewUI(path, tex);
 
-            // ---- Gate upload on discovery if required ----
             if (string.IsNullOrEmpty(restClient.ServerBaseUrl))
             {
                 if (requireDiscoveryBeforeUpload)
@@ -185,7 +192,6 @@ public class M_PhotoUploader : MonoBehaviour
                 }
             }
 
-            // ---- Encode to JPEG ----
             int q = Mathf.Clamp(jpegQuality, 1, 100);
             byte[] jpgBytes;
 
@@ -204,7 +210,6 @@ public class M_PhotoUploader : MonoBehaviour
                 Debug.Log($"[M_PhotoUploader] Encoded JPEG (q={q}) size={jpgBytes.Length} bytes.");
             }
 
-            // ---- Upload ----
             StartCoroutine(restClient.UploadPhoto(jpgBytes));
 
         }, "Select a photo to upload", "image/*");
@@ -231,7 +236,6 @@ public class M_PhotoUploader : MonoBehaviour
             previewImage.texture = currentPreviewTexture;
             previewImage.color = Color.white;
 
-            // If you prefer fixed rect sizing, remove this.
             previewImage.SetNativeSize();
 
             if (logSizeDetails)

@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_QuestGalleryController.cs
+ * Author: Mason Prather
+ * Description: Coordinates the Quest media gallery UI, device picker imports, phone/shared imports, tile selection, deletion, and optional network broadcast.
+ * Project Role: Primary media browser controller for selecting and sharing images inside the Unity experience.
+ * Key Inputs: Gallery bridge scan results, ImagePicker prepared payloads, pending Android share imports, tile prefab references, and display/network sync references.
+ * Key Outputs: Spawned gallery tiles, selected image display updates, imported-media records, deletion operations, status labels, and shared-media broadcasts.
+ */
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -71,6 +80,13 @@ public class M_QuestGalleryController : MonoBehaviour
 
     [Tooltip("If true, images selected through the NativeGallery picker are broadcast to connected Unity clients.")]
     public bool broadcastNativeGalleryImports = true;
+
+    [Header("Deletion")]
+    [Tooltip("If true, images stored by this app can be deleted from the grid.")]
+    public bool allowDeletingStoredImages = true;
+
+    [Tooltip("If true, deletion can remove external gallery files. Keep this off unless the user explicitly wants broad device-gallery deletion.")]
+    public bool allowDeletingExternalGalleryFiles = false;
 
     [Header("Debug")]
     [Tooltip("If true, log controller events.")]
@@ -318,6 +334,25 @@ public class M_QuestGalleryController : MonoBehaviour
         UploadSelected();
     }
 
+    public bool CanDeleteGalleryItem(M_QuestGalleryAndroidBridge.GalleryItem item)
+    {
+        ResolveRuntimeReferences();
+
+        return allowDeletingStoredImages &&
+               androidBridge != null &&
+               androidBridge.CanDeleteGalleryItem(item, allowDeletingExternalGalleryFiles);
+    }
+
+    public void DeleteSelectedImage()
+    {
+        DeleteGalleryItem(_selectedTile, _selectedItem);
+    }
+
+    public void DeleteTileImage(M_QuestGalleryTile tile, M_QuestGalleryAndroidBridge.GalleryItem item)
+    {
+        DeleteGalleryItem(tile, item);
+    }
+
     private void QueueGalleryReload(
         string preferredSelectionIdentity = null,
         bool preserveCurrentDisplay = false,
@@ -445,6 +480,7 @@ public class M_QuestGalleryController : MonoBehaviour
             M_QuestGalleryAndroidBridge.GalleryItem item = _items[i];
             M_QuestGalleryTile tile = Instantiate(tilePrefab, tileParent);
             tile.Setup(this, item);
+            tile.SetDeleteVisible(CanDeleteGalleryItem(item));
 
             _spawnedTiles.Add(tile);
 
@@ -593,6 +629,49 @@ public class M_QuestGalleryController : MonoBehaviour
 
         if (_networkedPhotoSync != null)
             _networkedPhotoSync.Initialize(photoDisplay);
+    }
+
+    private void DeleteGalleryItem(M_QuestGalleryTile tile, M_QuestGalleryAndroidBridge.GalleryItem item)
+    {
+        ResolveRuntimeReferences();
+
+        if (!allowDeletingStoredImages)
+        {
+            SetStatus("Deleting images is disabled");
+            return;
+        }
+
+        if (androidBridge == null)
+        {
+            Debug.LogWarning("[M_QuestGalleryController] Delete failed: androidBridge is not assigned.");
+            return;
+        }
+
+        if (item == null)
+        {
+            SetStatus("Select an image to delete");
+            return;
+        }
+
+        bool wasSelected = item == _selectedItem || tile == _selectedTile;
+        string deletedName = string.IsNullOrWhiteSpace(item.fileName) ? "image" : item.fileName;
+
+        if (!androidBridge.TryDeleteGalleryItem(item, allowDeletingExternalGalleryFiles))
+        {
+            SetStatus("Only stored uploads can be deleted");
+            return;
+        }
+
+        if (wasSelected)
+        {
+            ClearSelection();
+
+            if (photoDisplay != null)
+                photoDisplay.ClearDisplay();
+        }
+
+        SetStatus($"Deleted: {deletedName}");
+        QueueGalleryReload(preserveCurrentDisplay: !wasSelected, requestMediaPermission: false);
     }
 
     private bool TrySharePreparedPickerImage()

@@ -1,3 +1,10 @@
+/*
+ * Script Name: PlayerOptions.cs
+ * Author: Mason Prather
+ * Description: Player Options controls local menu, tooltip, popout, greeting, and world-canvas UI behavior.
+ * Project Role: User interface layer for shared VR scenes.
+ */
+
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.Audio;

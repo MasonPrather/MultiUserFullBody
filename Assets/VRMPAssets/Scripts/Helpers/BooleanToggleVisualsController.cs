@@ -1,3 +1,10 @@
+/*
+ * Script Name: BooleanToggleVisualsController.cs
+ * Author: Mason Prather
+ * Description: Boolean Toggle Visuals Controller provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;

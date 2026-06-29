@@ -1,3 +1,10 @@
+/*
+ * Script Name: TooltipUI.cs
+ * Author: Mason Prather
+ * Description: Tooltip UI controls local menu, tooltip, popout, greeting, and world-canvas UI behavior.
+ * Project Role: User interface layer for shared VR scenes.
+ */
+
 using UnityEngine;
 using UnityEngine.UI;
 

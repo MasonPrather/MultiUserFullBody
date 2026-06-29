@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_PhoneMirrorQuestWebRTC.cs
+ * Author: Mason Prather
+ * Description: Receives a phone WebRTC video stream over local TCP signaling and presents it on the Quest phone mirror panel, with optional input messages over the WebRTC data channel.
+ * Project Role: Quest-side WebRTC endpoint for phone screen mirroring experiments.
+ * Key Inputs: TCP signaling JSON, STUN configuration, remote video track frames, phone panel RawImage, and input data channel state.
+ * Key Outputs: Rendered phone video texture, WebRTC answer/ICE signaling responses, connection status text, and touch JSON messages.
+ */
+
 using System;
 using System.Collections;
 using TMPro;

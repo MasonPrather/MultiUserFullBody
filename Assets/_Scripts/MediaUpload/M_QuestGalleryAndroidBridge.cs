@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_QuestGalleryAndroidBridge.cs
+ * Author: Mason Prather
+ * Description: Queries Quest/Android media sources, app-owned import folders, and supported image files, then loads thumbnails and full-resolution textures for the media gallery.
+ * Project Role: Platform bridge beneath the Quest media gallery browser and import diagnostics.
+ * Key Inputs: Android permissions, MediaStore results, shared storage folders, app-owned import folders, content URIs, and filesystem paths.
+ * Key Outputs: GalleryItem lists, thumbnail textures, loaded image textures, imported file records, deletion results, and diagnostic logs.
+ */
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -313,6 +322,41 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
         return uploadPath;
     }
 
+    public bool CanDeleteGalleryItem(GalleryItem item, bool allowExternalGalleryFiles = false)
+    {
+        if (item == null || string.IsNullOrWhiteSpace(item.filePath))
+            return false;
+
+        string normalizedPath = NormalizeComparablePath(item.filePath);
+        if (string.IsNullOrWhiteSpace(normalizedPath) || !File.Exists(normalizedPath))
+            return false;
+
+        return allowExternalGalleryFiles || IsAppManagedMediaPath(normalizedPath);
+    }
+
+    public bool TryDeleteGalleryItem(GalleryItem item, bool allowExternalGalleryFiles = false)
+    {
+        if (!CanDeleteGalleryItem(item, allowExternalGalleryFiles))
+            return false;
+
+        string normalizedPath = NormalizeComparablePath(item.filePath);
+
+        try
+        {
+            File.Delete(normalizedPath);
+
+            if (verboseLogging)
+                Debug.Log($"[M_QuestGalleryAndroidBridge] Deleted gallery item: {normalizedPath}");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[M_QuestGalleryAndroidBridge] Failed to delete '{normalizedPath}': {ex.Message}");
+            return false;
+        }
+    }
+
     public GalleryItem ImportImageIntoManagedStorage(string sourcePath, string sourceLabel = "Imported")
     {
         string normalizedSourcePath = NormalizePath(sourcePath);
@@ -604,6 +648,25 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool IsAppManagedMediaPath(string normalizedPath)
+    {
+        return IsPathInsideFolder(normalizedPath, GetPhoneUploadFolderPath()) ||
+               IsPathInsideFolder(normalizedPath, GetManagedImportFolderPath());
+    }
+
+    private bool IsPathInsideFolder(string normalizedPath, string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedPath) || string.IsNullOrWhiteSpace(folderPath))
+            return false;
+
+        string normalizedFolder = NormalizeComparablePath(folderPath);
+        if (string.IsNullOrWhiteSpace(normalizedFolder))
+            return false;
+
+        return string.Equals(normalizedPath, normalizedFolder, StringComparison.OrdinalIgnoreCase) ||
+               normalizedPath.StartsWith(normalizedFolder + "/", StringComparison.OrdinalIgnoreCase);
     }
 
     private int QueryMediaStoreImages(List<GalleryItem> items, HashSet<string> seenItems)

@@ -1,3 +1,10 @@
+/*
+ * Script Name: Projectile.cs
+ * Author: Mason Prather
+ * Description: Projectile supports target-practice projectiles, targets, and target reset behavior.
+ * Project Role: Interactive sandbox feature for shared VR rooms.
+ */
+
 using System;
 using System.Collections;
 using UnityEngine;

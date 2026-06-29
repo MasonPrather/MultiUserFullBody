@@ -155,11 +155,17 @@ StyleCopReport.xml
 !Assets/_Scenes/PhonePhotoUpload.unity.meta
 !Assets/_Scripts/MediaUpload/ImagePicker.cs.meta
 !Assets/_Scripts/MediaUpload/M_NetworkedPhotoSync.cs.meta
+!Assets/_Scripts/MediaUpload/M_PassthroughHandVisualController.cs.meta
+!Assets/_Scripts/MediaUpload/M_PassthroughModeController.cs.meta
+!Assets/_Scripts/MediaUpload/M_PassthroughMountedToggleUI.cs.meta
 !Assets/_Scripts/MediaUpload/M_PhoneUploadToDisplay.cs.meta
 !Assets/_Scripts/MediaUpload/M_QuestGalleryAndroidBridge.cs.meta
 !Assets/_Scripts/MediaUpload/M_QuestGalleryController.cs.meta
 !Assets/_Scripts/MediaUpload/M_QuestGalleryTile.cs.meta
 !Assets/_Scripts/MediaUpload/M_QuestPhotoDisplay.cs.meta
+!Assets/_Scripts/Menus/M_QuestUserMenu.cs.meta
+!Assets/_Scripts/PhoneMirror/M_PhonePairingUiToggle.cs.meta
+!Assets/_Scripts/PhoneMirror/M_WorldSpaceUiRecenter.cs.meta
 *.obj
 *.iobj
 *.pch

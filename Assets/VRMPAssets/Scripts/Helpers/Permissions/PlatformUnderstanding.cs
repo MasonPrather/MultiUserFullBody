@@ -1,3 +1,10 @@
+/*
+ * Script Name: PlatformUnderstanding.cs
+ * Author: Mason Prather
+ * Description: Platform Understanding handles platform detection and Android permission request callbacks for headset runtime features.
+ * Project Role: Platform support layer for Quest permissions.
+ */
+
 using UnityEngine.XR.OpenXR;
 
 namespace UnityEngine.XR.Templates.VRMultiplayer
@@ -41,7 +48,7 @@ namespace UnityEngine.XR.Templates.VRMultiplayer
         /// <returns>The current platform based on the active XRSessionSubsystem.</returns>
         static XRPlatformType GetCurrentXRPlatform()
         {
-            // If we have already initialized, just return the current platform
+            // Return the cached platform after initialization.
             if (k_Initialized)
                 return k_CurrentPlatform;
 

@@ -1,3 +1,10 @@
+/*
+ * Script Name: JointBasedHand.cs
+ * Author: Mason Prather
+ * Description: Joint Based Hand controls local and remote player presentation, name tags, hand poses, HUD notifications, and appearance controls.
+ * Project Role: Player presentation layer for shared VR sessions.
+ */
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;

@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_ServerBootstrap.cs
+ * Author: Mason Prather
+ * Description: Starts the local HTTP upload server, starts UDP discovery beacons, generates the pairing code, resolves local phone URLs, and publishes headset instructions.
+ * Project Role: Bootstrap component for the no-install phone photo upload flow.
+ * Key Inputs: HTTP/discovery ports, persistent upload path, pairing-code settings, local network interfaces, and optional instruction TMP labels.
+ * Key Outputs: Running HTTP server, discovery component, published upload URLs, pairing instructions, and status logs.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,6 +39,16 @@ public class M_ServerBootstrap : MonoBehaviour
         }
     }
 
+    public string[] PublishedPhoneUrls
+    {
+        get
+        {
+            string[] copy = new string[_publishedPhoneUrls.Length];
+            Array.Copy(_publishedPhoneUrls, copy, _publishedPhoneUrls.Length);
+            return copy;
+        }
+    }
+
     [Header("Ports")]
     public int httpPort = 8080;
     public int discoveryPort = 7777;
@@ -37,6 +56,19 @@ public class M_ServerBootstrap : MonoBehaviour
     [Header("Phone Upload")]
     [Tooltip("Maximum accepted HTTP request size in megabytes.")]
     public int maxUploadMegabytes = 64;
+
+    [Header("Simple URL")]
+    [Tooltip("Optional short URL shown first in the headset. Leave empty unless DNS/local routing resolves it to this headset.")]
+    public string shortDisplayUrl = string.Empty;
+
+    [Tooltip("If true, show the short URL before local IP fallback URLs.")]
+    public bool preferShortDisplayUrl = false;
+
+    [Tooltip("If true, local IP URLs are still shown below the short URL as a fallback.")]
+    public bool includeLocalFallbackUrls = true;
+
+    [Tooltip("If true, user-facing local URLs omit http:// so they are easier to read and type.")]
+    public bool useCompactLocalUrls = true;
 
     [Tooltip("If true, phones must enter the short code shown in the headset before uploading.")]
     public bool requirePairingCode = true;
@@ -67,6 +99,7 @@ public class M_ServerBootstrap : MonoBehaviour
     private string _effectivePairingCode;
     private string _publishedInstructions;
     private string[] _publishedUploadUrls = new string[0];
+    private string[] _publishedPhoneUrls = new string[0];
 
     private sealed class NetworkAddressInfo
     {
@@ -129,6 +162,7 @@ public class M_ServerBootstrap : MonoBehaviour
     {
         List<NetworkAddressInfo> addresses = GetLocalIPv4Addresses();
         _publishedUploadUrls = BuildUploadUrls(addresses);
+        _publishedPhoneUrls = BuildPhoneUrls(_publishedUploadUrls);
         PrimaryUploadUrl = _publishedUploadUrls.Length > 0 ? _publishedUploadUrls[0] : $"http://<quest-ip>:{httpPort}";
 
         string instructions = BuildPhoneUploadInstructions(addresses);
@@ -172,17 +206,17 @@ public class M_ServerBootstrap : MonoBehaviour
         StringBuilder sb = new StringBuilder();
         sb.AppendLine("Open on phone:");
 
-        if (_publishedUploadUrls.Length == 0)
+        if (_publishedPhoneUrls.Length == 0)
         {
-            sb.AppendLine($"http://<quest-ip>:{httpPort}");
+            sb.AppendLine($"<quest-ip>:{httpPort}");
         }
         else
         {
             int count = Mathf.Max(1, maxDisplayedUrls);
-            count = Math.Min(count, _publishedUploadUrls.Length);
+            count = Math.Min(count, _publishedPhoneUrls.Length);
 
             for (int i = 0; i < count; i++)
-                sb.AppendLine(_publishedUploadUrls[i]);
+                sb.AppendLine(_publishedPhoneUrls[i]);
         }
 
         if (!string.IsNullOrEmpty(_effectivePairingCode))
@@ -202,6 +236,65 @@ public class M_ServerBootstrap : MonoBehaviour
             urls[i] = $"http://{addresses[i].address}:{httpPort}";
 
         return urls;
+    }
+
+    private string[] BuildPhoneUrls(string[] localUrls)
+    {
+        List<string> urls = new List<string>();
+        string shortUrl = NormalizeDisplayUrl(shortDisplayUrl);
+
+        if (preferShortDisplayUrl && !string.IsNullOrWhiteSpace(shortUrl))
+            AddUniquePhoneUrl(urls, shortUrl, compactLocalUrl: false);
+
+        if (includeLocalFallbackUrls || urls.Count == 0)
+        {
+            if (localUrls != null)
+            {
+                for (int i = 0; i < localUrls.Length; i++)
+                    AddUniquePhoneUrl(urls, localUrls[i], compactLocalUrl: useCompactLocalUrls);
+            }
+        }
+
+        return urls.ToArray();
+    }
+
+    private void AddUniquePhoneUrl(List<string> urls, string rawUrl, bool compactLocalUrl)
+    {
+        string displayUrl = BuildDisplayPhoneUrl(rawUrl, compactLocalUrl);
+        if (!string.IsNullOrWhiteSpace(displayUrl) && !urls.Contains(displayUrl))
+            urls.Add(displayUrl);
+    }
+
+    private string BuildDisplayPhoneUrl(string rawUrl, bool compactLocalUrl)
+    {
+        string normalized = NormalizeDisplayUrl(rawUrl);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return string.Empty;
+
+        return compactLocalUrl ? StripHttpScheme(normalized) : normalized;
+    }
+
+    private string StripHttpScheme(string value)
+    {
+        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            return value.Substring("http://".Length);
+
+        return value;
+    }
+
+    private string NormalizeDisplayUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        string trimmed = value.Trim();
+        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed.TrimEnd('/');
+        }
+
+        return "http://" + trimmed.TrimEnd('/');
     }
 
     private void ResolveInstructionTextReferences()

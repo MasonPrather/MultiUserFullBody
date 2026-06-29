@@ -1,3 +1,10 @@
+/*
+ * Script Name: PositionalClampY.cs
+ * Author: Mason Prather
+ * Description: Positional Clamp Y provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using UnityEngine;
 
 namespace XRMultiplayer

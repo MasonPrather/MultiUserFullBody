@@ -1,3 +1,10 @@
+/*
+ * Script Name: PermissionsManager.cs
+ * Author: Mason Prather
+ * Description: Permissions Manager handles platform detection and Android permission request callbacks for headset runtime features.
+ * Project Role: Platform support layer for Quest permissions.
+ */
+
 using System;
 using System.Collections.Generic;
 

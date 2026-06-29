@@ -1,3 +1,10 @@
+/*
+ * Script Name: SimplePen.cs
+ * Author: Mason Prather
+ * Description: Simple Pen supports networked drawing tools and pen trail presentation in shared VR scenes.
+ * Project Role: Interactive sandbox feature for collaborative scene markup.
+ */
+
 using System.Collections.Generic;
 using UnityEngine;
 using XRMultiplayer;

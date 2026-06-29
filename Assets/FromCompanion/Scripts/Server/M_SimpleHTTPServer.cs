@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_SimpleHTTPServer.cs
+ * Author: Mason Prather
+ * Description: Implements the local phone-upload HTTP server, serves the browser upload page, validates pairing codes when required, accepts raw or multipart image uploads, and writes files to persistent storage.
+ * Project Role: Quest-hosted no-install upload endpoint for phone photo sharing.
+ * Key Inputs: TCP HTTP requests for /, /ping, and /upload-photo; pairing code query/form values; raw or multipart image bytes.
+ * Key Outputs: Saved upload files, LastSavedPhotoPath updates, JSON/HTML HTTP responses, and server logs.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;

@@ -1,3 +1,10 @@
+/*
+ * Script Name: PlayerAppearanceMenu.cs
+ * Author: Mason Prather
+ * Description: Player Appearance Menu controls local and remote player presentation, name tags, hand poses, HUD notifications, and appearance controls.
+ * Project Role: Player presentation layer for shared VR sessions.
+ */
+
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -6,7 +13,7 @@ using UnityEngine.UI;
 namespace XRMultiplayer
 {
     /// <summary>
-    /// A simple example of how to setup a player appearance menu and utilize the bindable variables.
+    /// Player appearance menu that binds UI controls to the local player color and name variables.
     /// </summary>
     public class PlayerAppearanceMenu : MonoBehaviour
     {

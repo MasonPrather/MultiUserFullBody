@@ -1,6 +1,10 @@
 /*
- * OneClickMatchMenu.cs
- * - Host/Join with lightweight UI flow guards.
+ * Script Name: M_MenuManager.cs
+ * Author: Mason Prather
+ * Description: Drives Meta matchmaking menu panels, host/join actions, scene transition, and Vivox channel coordination for the menu flow.
+ * Project Role: Menu-side orchestration for one-click multiplayer room creation and joining.
+ * Key Inputs: CustomMatchmaking component, lobby configuration fields, UI panel references, and configured gameplay scene name.
+ * Key Outputs: Room create/join calls, menu panel state changes, success/failure toasts, scene load requests, and voice channel commands.
  */
 
 using System;
@@ -22,9 +26,9 @@ namespace Meta.XR.MultiplayerBlocks.Shared
 
         [Header("Panels")]
         [SerializeField] private GameObject MainPanel;
-        [SerializeField] private GameObject HostingPanel;        // “Hosting Lobby…”
-        [SerializeField] private GameObject JoiningPanel;        // “Joining Lobby…”
-        [SerializeField] private GameObject JoinFailedPanel;     // “No public games found…”
+        [SerializeField] private GameObject HostingPanel;        // Hosting Lobby panel
+        [SerializeField] private GameObject JoiningPanel;        // Joining Lobby panel
+        [SerializeField] private GameObject JoinFailedPanel;     // No public games found panel
         [SerializeField] private GameObject LobbyHostedPanel;    // success toast (host)
         [SerializeField] private GameObject LobbyJoinedPanel;    // success toast (join)
         [SerializeField, Min(0.5f)] private float successToastSeconds = 3f;
@@ -83,7 +87,6 @@ namespace Meta.XR.MultiplayerBlocks.Shared
         {
             if (matchmaking == null) { Debug.LogError("CustomMatchmaking ref missing."); return; }
 
-            // Guard UI
             ShowOnly(HostingPanel);
 
             try
@@ -97,12 +100,10 @@ namespace Meta.XR.MultiplayerBlocks.Shared
                 if (!result.IsSuccess)
                 {
                     Debug.LogWarning($"Host failed: {result.ErrorMessage}");
-                    // Bounce back to main so user can try again
                     ShowOnly(MainPanel);
                     return;
                 }
 
-                // Success: quick toast, then clear UI, then load scene
                 yieldToastThenHide(LobbyHostedPanel, successToastSeconds);
                 await LoadGameplayAsync();
             }
@@ -117,7 +118,6 @@ namespace Meta.XR.MultiplayerBlocks.Shared
         {
             if (matchmaking == null) { Debug.LogError("CustomMatchmaking ref missing."); return; }
 
-            // Guard UI
             ShowOnly(JoiningPanel);
 
             try
@@ -145,7 +145,6 @@ namespace Meta.XR.MultiplayerBlocks.Shared
                     return;
                 }
 
-                // Success: quick toast, then clear UI, then load scene
                 yieldToastThenHide(LobbyJoinedPanel, successToastSeconds);
                 await LoadGameplayAsync();
             }

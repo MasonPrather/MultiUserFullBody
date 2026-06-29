@@ -1,3 +1,10 @@
+/*
+ * Script Name: MiniGameBase.cs
+ * Author: Mason Prather
+ * Description: Mini Game Base coordinates mini-game state, scoring, player queues, and scoreboard presentation.
+ * Project Role: Mini-game framework for optional shared VR activities.
+ */
+
 using System.Collections;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;

@@ -1,3 +1,10 @@
+/*
+ * Script Name: MessageText.cs
+ * Author: Mason Prather
+ * Description: Message Text supports shared message board text entry and networked message display.
+ * Project Role: Collaborative UI feature for shared VR rooms.
+ */
+
 using UnityEngine;
 using TMPro;
 

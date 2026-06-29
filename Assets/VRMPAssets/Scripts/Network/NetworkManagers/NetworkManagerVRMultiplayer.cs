@@ -1,3 +1,12 @@
+/*
+ * Script Name: NetworkManagerVRMultiplayer.cs
+ * Author: Mason Prather
+ * Description: Applies project NetworkManager settings for log level, background execution, and Netcode configuration at scene startup.
+ * Project Role: Netcode configuration component for shared VR scenes.
+ * Key Inputs: Serialized LogLevel, RunInBackground, and NetworkConfig fields.
+ * Key Outputs: Configured NetworkManager state and project logging level.
+ */
+
 using Unity.Netcode;
 using UnityEngine;
 
@@ -12,10 +21,10 @@ namespace XRMultiplayer
     /// </summary>
     public class NetworkManagerVRMultiplayer : NetworkManager
     {
-        [SerializeField, Tooltip("Set this to control how much logging is generated")]
+        [SerializeField, Tooltip("Controls Netcode logging detail for project sessions.")]
         LogLevel m_LogLevel;
 
-        [SerializeField, Tooltip("This should almost always be set to true")]
+        [SerializeField, Tooltip("Keeps the session active while the application is not focused.")]
         bool m_RunInBackground = true;
 
         [SerializeField]
@@ -33,7 +42,7 @@ namespace XRMultiplayer
 
 #if UNITY_EDITOR
     [CustomEditor(typeof(NetworkManagerVRMultiplayer))]
-    class VRMutliplayerTemplateNetworkManagerEditor : Editor
+    class VRMultiplayerNetworkManagerEditor : Editor
     {
         /// <summary>
         /// This function is called when the inspector is drawn.

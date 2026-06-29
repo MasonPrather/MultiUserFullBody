@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_NetFaceMirror.cs
+ * Author: Mason Prather
+ * Description: Samples owner-side local face blendshape weights, scales and thresholds them, sends compact snapshots through Netcode RPCs, and applies smoothed weights to each networked avatar face mesh.
+ * Project Role: Network facial-expression replication for Ready Player Me avatars.
+ * Key Inputs: Owner local face mesh weights, avatar face mesh, send interval, deadzone/smoothing settings, and Netcode ownership state.
+ * Key Outputs: ServerRpc/ClientRpc face snapshots, remote blendshape updates, neutral relaxation, and diagnostic logs.
+ */
+
 using System;
 using Unity.Netcode;
 using UnityEngine;
@@ -5,27 +14,11 @@ using UnityEngine;
 /// <summary>
 /// M_NetFaceMirror
 /// 
-/// - OWNER:
-///   * Reads blendshape weights from a local source face mesh (driven by OVR face tracking).
-///   * Scales them by weightScale (e.g. 0.05 = 5%) and sends snapshots via ServerRpc.
-/// 
-/// - ALL CLIENTS (including owner):
-///   * Receive the snapshot in a ClientRpc and apply it to the avatarFaceMesh
-///     (the RPM head mesh on the networked avatar).
-/// 
-/// Assumptions:
-/// - The local source mesh and the networked avatar face meshes come from the
-///   same RPM avatar URL, so blendshape indices match.
-/// - Weights are in the typical 0–100 range. We clamp + smooth for safety.
-/// 
-/// Extra:
-/// - OnNetworkSpawn, the owner will try to late-bind its local source mesh from
-///   M_LocalAvatarManager.LastLocalFaceSMR if nothing has been bound yet.
-/// 
-/// Neutral behavior:
-/// - Tiny local jitters are suppressed via deadzones before networking.
-/// - When target is neutral (0), the remote face relaxes faster and snaps to
-///   exact 0 when close enough, so it doesn't get "stuck" in micro-expressions.
+/// Owner clients sample the local OVR-driven Ready Player Me face mesh, scale
+/// the blendshape weights, and send snapshots through Netcode. All clients
+/// receive those snapshots and apply them to the corresponding network avatar
+/// face mesh. This component assumes local and networked avatars use the same
+/// RPM avatar URL so blendshape indices remain aligned.
 /// </summary>
 public class M_NetFaceMirror : NetworkBehaviour
 {
@@ -38,7 +31,7 @@ public class M_NetFaceMirror : NetworkBehaviour
     [SerializeField] private SkinnedMeshRenderer avatarFaceMesh;
 
     [Header("Network Settings")]
-    [Tooltip("How often to send face snapshots (seconds). 0.03 ≈ 30 FPS.")]
+    [Tooltip("How often to send face snapshots in seconds. 0.03 is approximately 30 FPS.")]
     [Range(0.02f, 0.1f)]
     [SerializeField] private float sendInterval = 0.04f;
 
@@ -47,19 +40,19 @@ public class M_NetFaceMirror : NetworkBehaviour
     [SerializeField] private float changeThreshold = 0.5f;
 
     [Header("Application")]
-    [Tooltip("0 = instant; higher = smoother. 0.15–0.35 feels good for active expressions.")]
+    [Tooltip("0 = instant; higher = smoother. Values around 0.15-0.35 are used for active expressions.")]
     [Range(0f, 1f)]
     [SerializeField] private float applySmoothing = 0.25f;
 
     [Tooltip("Scale factor applied to local weights before networking (0.05 = 5%).")]
     [Range(0.01f, 0.5f)]
-    [SerializeField] private float weightScale = 0.1f;   // <- main dampener
+    [SerializeField] private float weightScale = 0.1f;
 
-    [Tooltip("Hard max for blendshape weight to avoid cursed stretching.")]
+    [Tooltip("Hard maximum for network-applied blendshape weight.")]
     [Range(0f, 100f)]
     [SerializeField] private float maxWeight = 40f;
 
-    [Header("Neutral & Deadzones (Owner → Network)")]
+    [Header("Neutral & Deadzones (Owner to Network)")]
     [Tooltip("Raw deadzone on local 0–100 weights; below this, treated as exact 0 before scaling.")]
     [Range(0f, 10f)]
     [SerializeField] private float rawDeadzone = 1.5f;
@@ -104,10 +97,10 @@ public class M_NetFaceMirror : NetworkBehaviour
     {
         base.OnNetworkSpawn();
 
-        // We always want our target mesh cleared/ready.
+        // The target mesh starts in a neutral state before any network snapshot arrives.
         InitBuffersForAvatarMesh();
 
-        // Late-bind the local source for the OWNER if it hasn't been set yet.
+        // Owner instances can bind the local face mesh after the avatar loader finishes.
         if (IsOwner)
         {
             if (localSourceMesh == null && M_LocalAvatarManager.LastLocalFaceSMR != null)
@@ -141,7 +134,7 @@ public class M_NetFaceMirror : NetworkBehaviour
         if (!IsSpawned)
             return;
 
-        // Only the owner (on their client) reads from localSourceMesh and sends updates.
+        // Only the owning client samples local tracking data and sends face snapshots.
         if (IsOwner && IsClient && localSourceMesh != null)
         {
             OwnerTick_SendFaceSnapshots();
@@ -153,8 +146,7 @@ public class M_NetFaceMirror : NetworkBehaviour
     #region Public Binds
 
     /// <summary>
-    /// Called from your local avatar loader once the OVR-driven face mesh is known.
-    /// Only needs to be called on the owner.
+    /// Binds the owner-side OVR-driven face mesh after the local RPM avatar is loaded.
     /// </summary>
     public void BindLocalSource(SkinnedMeshRenderer source)
     {
@@ -172,8 +164,7 @@ public class M_NetFaceMirror : NetworkBehaviour
     }
 
     /// <summary>
-    /// Called from your RPM binder / networked avatar loader on all clients
-    /// so we know which mesh to apply weights to.
+    /// Binds the network avatar face mesh that receives replicated weights on each client.
     /// </summary>
     public void BindAvatarFace(SkinnedMeshRenderer target)
     {
@@ -243,7 +234,7 @@ public class M_NetFaceMirror : NetworkBehaviour
             // Raw OVR-driven RPM weight 0–100
             float wRaw = localSourceMesh.GetBlendShapeWeight(i);
 
-            // Clamp raw into sane bounds just in case.
+            // Clamp raw tracking values into Unity's blendshape range.
             wRaw = Mathf.Clamp(wRaw, 0f, 100f);
 
             // 1) Raw deadzone: treat tiny noise as perfect neutral.
@@ -367,7 +358,7 @@ public class M_NetFaceMirror : NetworkBehaviour
 
         for (int i = 0; i < count; i++)
         {
-            // Values are already scaled on the owner, but we clamp again just in case.
+            // Clamp replicated values before applying them to the local mesh.
             float target = Mathf.Clamp(snapshot.Weights[i], 0f, maxWeight);
             float current = avatarFaceMesh.GetBlendShapeWeight(i);
 

@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_PhoneUploadToDisplay.cs
+ * Author: Mason Prather
+ * Description: Loads the newest file saved by the local phone upload HTTP server and applies it to the project photo display.
+ * Project Role: Connects no-install phone uploads to the same display, gallery refresh, and multiplayer broadcast path used by headset imports.
+ * Key Inputs: M_SimpleHttpServer.LastSavedPhotoPath, file bytes from persistent storage, display/gallery/network sync references.
+ * Key Outputs: Displayed Texture2D, refreshed gallery contents, status text updates, and optional shared-media broadcast.
+ */
+
 using System;
 using System.Collections;
 using System.IO;

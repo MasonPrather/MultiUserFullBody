@@ -1,3 +1,12 @@
+/*
+ * Script Name: AuthenticationManager.cs
+ * Author: Mason Prather
+ * Description: Authentication Manager manages authentication, sessions/lobbies, transports, voice chat, and high-level multiplayer connection state.
+ * Project Role: Multiplayer services layer for shared VR sessions.
+ * Key Inputs: Serialized scene references, Unity lifecycle events, and related subsystem state.
+ * Key Outputs: Runtime state updates, scene object changes, UI updates, network messages, or diagnostic logs as appropriate for the component.
+ */
+
 using System;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;

@@ -1,3 +1,12 @@
+/*
+ * Script Name: FaceSyncData.cs
+ * Author: Mason Prather
+ * Description: Serializes facial-expression blendshape weights and eye-forward vectors for experimental network face synchronization paths.
+ * Project Role: Legacy data container retained for face-sync experiments alongside the current M_NetFaceMirror implementation.
+ * Key Inputs: Blendshape weight arrays and eye-forward vectors.
+ * Key Outputs: Netcode serialization payloads for readers and writers.
+ */
+
 using Unity.Netcode;
 using UnityEngine;
 

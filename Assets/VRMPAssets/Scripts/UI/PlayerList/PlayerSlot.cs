@@ -1,3 +1,10 @@
+/*
+ * Script Name: PlayerSlot.cs
+ * Author: Mason Prather
+ * Description: Player Slot displays connected player entries and per-player list rows.
+ * Project Role: Menu UI support for multiplayer participant awareness.
+ */
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;

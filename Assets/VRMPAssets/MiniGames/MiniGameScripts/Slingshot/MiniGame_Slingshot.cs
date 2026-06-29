@@ -1,3 +1,10 @@
+/*
+ * Script Name: MiniGame_Slingshot.cs
+ * Author: Mason Prather
+ * Description: Mini Game  Slingshot supports the slingshot mini-game, including launch behavior, projectile motion, and visuals.
+ * Project Role: Mini-game gameplay logic for networked activity spaces.
+ */
+
 using UnityEngine;
 
 namespace XRMultiplayer.MiniGames

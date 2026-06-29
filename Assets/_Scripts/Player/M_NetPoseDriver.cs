@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_NetPoseDriver.cs
+ * Author: Mason Prather
+ * Description: Replicates owner head and hand poses through Netcode variables and applies smoothed remote poses to avatar IK targets.
+ * Project Role: Pose synchronization layer for full-body network avatar movement.
+ * Key Inputs: OVR or XR Origin tracking anchors, IK target transforms, and Netcode ownership state.
+ * Key Outputs: NetworkVariables for head/hand pose, pose-ready state, and smoothed target transforms.
+ */
+
 using UnityEngine;
 using Unity.Netcode;
 
@@ -88,7 +97,7 @@ public class M_NetPoseDriver : NetworkBehaviour
         }
         else
         {
-            // Fallback to common names if user swaps to XR Origin someday
+            // XR Origin fallback object names used in alternate rig setups.
             var cam = GameObject.Find("Main Camera");
             var l = GameObject.Find("LeftHand Controller");
             var r = GameObject.Find("RightHand Controller");

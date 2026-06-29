@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_FaceDebugProbe.cs
+ * Author: Mason Prather
+ * Description: Collects neutral-expression diagnostics from OVR face tracking and Ready Player Me blendshapes to support face-mapping calibration.
+ * Project Role: Debugging and calibration aid for local facial animation setup.
+ * Key Inputs: OVRFaceExpressions values, local Ready Player Me face SkinnedMeshRenderer, and neutral sampling settings.
+ * Key Outputs: Console diagnostic summaries for expression channels and blendshape weights.
+ */
+
 using System;
 using UnityEngine;
 
@@ -5,7 +14,7 @@ using UnityEngine;
 /// M_FaceDebugProbe
 /// 
 /// Purpose:
-/// - Sample the local RPM face mesh over a short "neutral" window,
+/// - Sample the local RPM face mesh over a short neutral window,
 ///   and compute per-blendshape min / max / avg weights.
 /// - Log the summary to Logcat so we can reason about neutral baselines
 ///   and which morph targets are doing cursed stretching.
@@ -18,8 +27,8 @@ using UnityEngine;
 ///   IDX, Name, Min, Max, Avg.
 /// 
 /// Notes:
-/// - We sample the **local RPM SkinnedMeshRenderer** (post-mapping),
-///   which is what your local and networked avatars actually use.
+/// - Sampling uses the local RPM SkinnedMeshRenderer after channel mapping,
+///   matching the mesh used by local and networked avatars.
 /// </summary>
 public class M_FaceDebugProbe : MonoBehaviour
 {
@@ -119,8 +128,7 @@ public class M_FaceDebugProbe : MonoBehaviour
     }
 
     /// <summary>
-    /// Stops sampling and dumps the summary (if any samples were taken).
-    /// You can call this manually if you want to end early.
+    /// Stops sampling and prints the summary when samples have been recorded.
     /// </summary>
     public void StopNeutralSamplingAndDump()
     {

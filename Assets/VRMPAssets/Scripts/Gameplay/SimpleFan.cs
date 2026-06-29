@@ -1,3 +1,10 @@
+/*
+ * Script Name: SimpleFan.cs
+ * Author: Mason Prather
+ * Description: Simple Fan controls shared-room gameplay objects such as music, fans, gravity zones, and network object removal.
+ * Project Role: Scene gameplay support for the shared VR environment.
+ */
+
 using System.Collections.Generic;
 using XRMultiplayer;
 

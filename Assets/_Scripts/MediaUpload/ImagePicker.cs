@@ -1,3 +1,12 @@
+/*
+ * Script Name: ImagePicker.cs
+ * Author: Mason Prather
+ * Description: Opens the Quest/Android media picker, loads selected images as readable textures, applies previews, and prepares encoded payloads for media display or synchronization.
+ * Project Role: Media import entry point for headset-driven image selection in the MediaUpload and PhonePhotoUpload scenes.
+ * Key Inputs: NativeGallery selection path, encoding settings, optional renderer/RawImage/photo display references.
+ * Key Outputs: Displayed Texture2D, prepared image metadata, cached image payloads, UnityEvents, and ImagePrepared notifications.
+ */
+
 using System;
 using System.IO;
 using TMPro;

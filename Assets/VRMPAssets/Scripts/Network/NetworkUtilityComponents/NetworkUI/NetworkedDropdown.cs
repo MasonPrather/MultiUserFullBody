@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkedDropdown.cs
+ * Author: Mason Prather
+ * Description: Networked Dropdown synchronizes shared UI controls such as buttons, sliders, toggles, and dropdowns across clients.
+ * Project Role: Networked UI support for collaborative control panels.
+ */
+
 using UnityEngine;
 using Unity.Netcode;
 using TMPro;

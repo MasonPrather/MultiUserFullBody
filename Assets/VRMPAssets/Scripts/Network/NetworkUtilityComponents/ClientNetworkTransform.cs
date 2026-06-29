@@ -1,3 +1,10 @@
+/*
+ * Script Name: ClientNetworkTransform.cs
+ * Author: Mason Prather
+ * Description: Client Network Transform provides low-level network utility components for transforms, triggers, and Netcode-driven UI behavior.
+ * Project Role: Network support layer for shared scene mechanics.
+ */
+
 using UnityEngine;
 using Unity.Netcode.Components;
 

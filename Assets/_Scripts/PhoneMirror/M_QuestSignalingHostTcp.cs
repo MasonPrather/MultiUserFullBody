@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_QuestSignalingHostTcp.cs
+ * Author: Mason Prather
+ * Description: Hosts a framed TCP signaling server for phone mirroring, validates the pairing code, and relays signaling JSON on Unity main-thread events.
+ * Project Role: Quest-side signaling endpoint for the WebRTC phone mirror path.
+ * Key Inputs: Incoming TCP client frames, pairing code provider, local Wi-Fi IP, and WebRTC signaling JSON.
+ * Key Outputs: Connection/rejection/disconnection events, received JSON callbacks, and outbound framed JSON responses.
+ */
+
 using System;
 using System.Collections.Concurrent;
 using System.Net;

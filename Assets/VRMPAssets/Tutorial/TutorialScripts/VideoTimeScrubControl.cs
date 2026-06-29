@@ -1,3 +1,10 @@
+/*
+ * Script Name: VideoTimeScrubControl.cs
+ * Author: Mason Prather
+ * Description: Video Time Scrub Control controls in-scene tutorial video playback, render textures, and scrub controls.
+ * Project Role: Tutorial media support retained with the VRMP scene assets.
+ */
+
 using System;
 using System.Collections;
 using TMPro;

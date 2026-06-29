@@ -1,3 +1,10 @@
+/*
+ * Script Name: PlayerNameTag.cs
+ * Author: Mason Prather
+ * Description: Player Name Tag controls local and remote player presentation, name tags, hand poses, HUD notifications, and appearance controls.
+ * Project Role: Player presentation layer for shared VR sessions.
+ */
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;

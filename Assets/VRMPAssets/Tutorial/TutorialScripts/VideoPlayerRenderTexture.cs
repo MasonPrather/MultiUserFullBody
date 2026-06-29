@@ -1,3 +1,10 @@
+/*
+ * Script Name: VideoPlayerRenderTexture.cs
+ * Author: Mason Prather
+ * Description: Video Player Render Texture controls in-scene tutorial video playback, render textures, and scrub controls.
+ * Project Role: Tutorial media support retained with the VRMP scene assets.
+ */
+
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Video;

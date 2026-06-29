@@ -1,3 +1,10 @@
+/*
+ * Script Name: PenTrail.cs
+ * Author: Mason Prather
+ * Description: Pen Trail supports networked drawing tools and pen trail presentation in shared VR scenes.
+ * Project Role: Interactive sandbox feature for collaborative scene markup.
+ */
+
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;

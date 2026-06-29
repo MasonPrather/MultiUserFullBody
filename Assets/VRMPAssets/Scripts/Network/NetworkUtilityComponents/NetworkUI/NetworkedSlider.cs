@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkedSlider.cs
+ * Author: Mason Prather
+ * Description: Networked Slider synchronizes shared UI controls such as buttons, sliders, toggles, and dropdowns across clients.
+ * Project Role: Networked UI support for collaborative control panels.
+ */
+
 using UnityEngine;
 using Unity.Netcode;
 using UnityEngine.UI;

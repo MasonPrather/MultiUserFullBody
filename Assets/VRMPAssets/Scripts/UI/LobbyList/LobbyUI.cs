@@ -1,3 +1,10 @@
+/*
+ * Script Name: LobbyUI.cs
+ * Author: Mason Prather
+ * Description: Lobby UI displays available lobby/session entries and related connection UI.
+ * Project Role: Menu UI support for multiplayer room selection.
+ */
+
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;

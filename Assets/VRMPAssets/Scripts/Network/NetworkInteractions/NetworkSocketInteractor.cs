@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkSocketInteractor.cs
+ * Author: Mason Prather
+ * Description: Network Socket Interactor synchronizes XR interactable ownership and socket behavior across Netcode clients.
+ * Project Role: Network interaction layer for shared grabbable and socketed objects.
+ */
+
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;

@@ -1,3 +1,10 @@
+/*
+ * Script Name: MiniGame_Whack.cs
+ * Author: Mason Prather
+ * Description: Mini Game  Whack supports the Whack-A-Pig mini-game, including networked target spawning and breakable target behavior.
+ * Project Role: Mini-game gameplay logic for networked activity spaces.
+ */
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;

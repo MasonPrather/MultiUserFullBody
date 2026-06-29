@@ -1,3 +1,10 @@
+/*
+ * Script Name: VideoPlayerTutorial.cs
+ * Author: Mason Prather
+ * Description: Video Player Tutorial controls in-scene tutorial video playback, render textures, and scrub controls.
+ * Project Role: Tutorial media support retained with the VRMP scene assets.
+ */
+
 using System.Collections;
 using TMPro;
 using UnityEngine;

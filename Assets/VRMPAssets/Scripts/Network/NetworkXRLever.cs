@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkXRLever.cs
+ * Author: Mason Prather
+ * Description: Network XRLever synchronizes networked scene objects, player-facing tools, and shared interaction helpers.
+ * Project Role: Network support layer for shared VR scenes.
+ */
+
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.XR.Content.Interaction;

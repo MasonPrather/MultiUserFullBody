@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_QuestPhotoDisplay.cs
+ * Author: Mason Prather
+ * Description: Applies selected, uploaded, or synchronized textures to the project photo display target and associated status UI.
+ * Project Role: Shared display surface for headset imports, phone uploads, and remote media synchronization.
+ * Key Inputs: Gallery bridge items, provided Texture2D instances, RawImage bounds, renderer material settings, and display sizing configuration.
+ * Key Outputs: RawImage/renderer texture updates, fitted display layout, status/file labels, fallback display state, and released runtime textures.
+ */
+
 using System.Collections;
 using System.IO;
 using UnityEngine;

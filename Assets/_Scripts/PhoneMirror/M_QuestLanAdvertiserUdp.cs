@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_QuestLanAdvertiserUdp.cs
+ * Author: Mason Prather
+ * Description: Broadcasts lightweight UDP beacons that advertise the Quest phone-mirror signaling port on the local network.
+ * Project Role: Discovery helper for companion devices locating the Quest signaling host.
+ * Key Inputs: M_QuestSignalingHostTcp port, broadcast interval, beacon prefix, and device name.
+ * Key Outputs: UDP broadcast packets on the configured LAN discovery port.
+ */
+
 using System.Net;
 using System.Net.Sockets;
 using System.Text;

@@ -1,3 +1,10 @@
+/*
+ * Script Name: LobbyListSlotUI.cs
+ * Author: Mason Prather
+ * Description: Lobby List Slot UI displays available lobby/session entries and related connection UI.
+ * Project Role: Menu UI support for multiplayer room selection.
+ */
+
 using TMPro;
 using Unity.Services.Multiplayer;
 using UnityEngine;

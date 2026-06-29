@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_NetworkDiscoveryServer.cs
+ * Author: Mason Prather
+ * Description: Broadcasts local UDP beacons advertising the Quest HTTP upload server port on global and subnet broadcast addresses.
+ * Project Role: Discovery service paired with the local HTTP phone-upload server.
+ * Key Inputs: Configured discovery port, HTTP port, and active network interface addresses.
+ * Key Outputs: PHOTO_SERVER UDP beacons and discovery diagnostics.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Net;

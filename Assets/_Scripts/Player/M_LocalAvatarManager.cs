@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_LocalAvatarManager.cs
+ * Author: Mason Prather
+ * Description: Loads the local Ready Player Me avatar, binds VRIK targets to headset/controller anchors, initializes local face driving, and prepares face diagnostics.
+ * Project Role: Local avatar setup path for the player wearing the headset.
+ * Key Inputs: Ready Player Me avatar URL, OVR anchor transforms, optional OVRFaceExpressions component, and local avatar root.
+ * Key Outputs: Spawned local avatar, VRIK configuration, hidden first-person head meshes, M_LocalFaceDriver binding, and LastLocalFaceSMR reference.
+ */
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -33,7 +42,7 @@ public class M_LocalAvatarManager : MonoBehaviour
     [Header("First-Person View")]
     [SerializeField] private bool hideHeadMeshes = true;
 
-    [Header("IK Targets (sources from your rig)")]
+    [Header("IK Targets (tracking anchor sources)")]
     [SerializeField] private Transform headSrc;
     [SerializeField] private Transform leftHandSrc;
     [SerializeField] private Transform rightHandSrc;

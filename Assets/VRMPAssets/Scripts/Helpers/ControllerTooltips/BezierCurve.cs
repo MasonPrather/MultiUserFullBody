@@ -1,3 +1,10 @@
+/*
+ * Script Name: BezierCurve.cs
+ * Author: Mason Prather
+ * Description: Bezier Curve controls controller callout and tooltip positioning used by the VR interaction UI.
+ * Project Role: Instructional UI support for VR controllers and hand-menu interactions.
+ */
+
 using System;
 using UnityEngine;
 

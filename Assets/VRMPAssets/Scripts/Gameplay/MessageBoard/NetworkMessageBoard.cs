@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkMessageBoard.cs
+ * Author: Mason Prather
+ * Description: Network Message Board supports shared message board text entry and networked message display.
+ * Project Role: Collaborative UI feature for shared VR rooms.
+ */
+
 using UnityEngine;
 using Unity.Netcode;
 using Unity.Collections;

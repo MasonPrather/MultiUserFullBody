@@ -1,3 +1,12 @@
+/*
+ * Script Name: MiniGameManager.cs
+ * Author: Mason Prather
+ * Description: Mini Game Manager coordinates mini-game state, scoring, player queues, and scoreboard presentation.
+ * Project Role: Mini-game framework for optional shared VR activities.
+ * Key Inputs: Serialized scene references, Unity lifecycle events, and related subsystem state.
+ * Key Outputs: Runtime state updates, scene object changes, UI updates, network messages, or diagnostic logs as appropriate for the component.
+ */
+
 using System;
 using System.Collections;
 using System.Collections.Generic;

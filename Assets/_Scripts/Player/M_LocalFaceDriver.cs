@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_LocalFaceDriver.cs
+ * Author: Mason Prather
+ * Description: Maps OVRFaceExpressions values onto Ready Player Me ARKit-style blendshapes, applies smoothing/gain, and relaxes the local face mesh toward neutral when tracking is unavailable.
+ * Project Role: Local facial animation driver sampled by network face mirroring.
+ * Key Inputs: OVRFaceExpressions source values, Ready Player Me face mesh blendshape names, gain/smoothing/neutral thresholds.
+ * Key Outputs: Per-frame blendshape weights written to the local face SkinnedMeshRenderer.
+ */
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -8,12 +17,12 @@ using UnityEngine;
 /// 
 /// - Reads OVRFaceExpressions every frame.
 /// - Maps as many OVR expressions as possible onto ARKit-style RPM blendshapes.
-/// - Applies smoothing + gain locally (0–100 range).
+/// - Applies smoothing and gain locally in Unity's 0-100 blendshape range.
 /// - Aggressively relaxes ALL blendshapes back to 0 when expressions are neutral
 ///   or when tracking is invalid.
 /// 
 /// This is the ONLY component that writes to the local RPM face mesh.
-/// M_NetFaceMirror simply samples these weights and mirrors them over the network.
+/// M_NetFaceMirror samples these weights and mirrors them over the network.
 /// </summary>
 public class M_LocalFaceDriver : MonoBehaviour
 {
@@ -113,7 +122,7 @@ public class M_LocalFaceDriver : MonoBehaviour
         float dt = Time.deltaTime;
         if (dt <= 0f) dt = 1f / 60f;
 
-        // If tracking data is invalid, just relax everything toward 0.
+        // Invalid tracking data relaxes the face back to neutral instead of freezing stale expressions.
         if (faceSource == null || !faceSource.ValidExpressions || _channels.Count == 0)
         {
             RelaxAllToNeutral(dt);
@@ -121,7 +130,7 @@ public class M_LocalFaceDriver : MonoBehaviour
             return;
         }
 
-        // 1) Compute a rough total expression magnitude for "are we neutral?"
+        // Total expression magnitude is used as a neutral-pose gate.
         float totalMagnitude = 0f;
         foreach (var ch in _channels)
         {
@@ -129,7 +138,7 @@ public class M_LocalFaceDriver : MonoBehaviour
             totalMagnitude += Mathf.Abs(w);
         }
 
-        // 2) If basically neutral → aggressively relax to 0 across the board.
+        // Low expression magnitude returns every channel to neutral.
         if (totalMagnitude < globalNeutralThreshold)
         {
             RelaxAllToNeutral(dt);
@@ -137,7 +146,6 @@ public class M_LocalFaceDriver : MonoBehaviour
             return;
         }
 
-        // 3) Not neutral → drive channels.
         DriveChannels(dt);
         ApplyWeightsToMesh();
     }
@@ -167,7 +175,7 @@ public class M_LocalFaceDriver : MonoBehaviour
             if (src < perChannelMin)
                 continue;
 
-            float t = src * 100f * ch.gain * globalGain; // convert to 0–100-ish
+            float t = src * 100f * ch.gain * globalGain;
 
             // Soft clamp to user max, then hard clamp to Unity-safe 0–100
             t = Mathf.Clamp(t, 0f, maxWeight);
@@ -194,7 +202,7 @@ public class M_LocalFaceDriver : MonoBehaviour
 
             float blended = Mathf.Lerp(current, target, factor);
 
-            // Clamp after smoothing as well, just in case.
+            // Clamp after smoothing so external configuration cannot exceed Unity's blendshape range.
             _currentWeights[i] = Mathf.Clamp(blended, 0f, Mathf.Min(maxWeight, HARD_MAX_WEIGHT));
         }
     }

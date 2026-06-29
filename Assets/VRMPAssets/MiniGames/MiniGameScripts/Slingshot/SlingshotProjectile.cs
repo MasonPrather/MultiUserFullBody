@@ -1,3 +1,10 @@
+/*
+ * Script Name: SlingshotProjectile.cs
+ * Author: Mason Prather
+ * Description: Slingshot Projectile supports the slingshot mini-game, including launch behavior, projectile motion, and visuals.
+ * Project Role: Mini-game gameplay logic for networked activity spaces.
+ */
+
 using System;
 using System.Collections;
 using UnityEngine;

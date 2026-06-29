@@ -1,3 +1,10 @@
+/*
+ * Script Name: NetworkedPlatformSpecificVisuals.cs
+ * Author: Mason Prather
+ * Description: Networked Platform Specific Visuals synchronizes networked scene objects, player-facing tools, and shared interaction helpers.
+ * Project Role: Network support layer for shared VR scenes.
+ */
+
 using Unity.Netcode;
 using XRMultiplayer;
 

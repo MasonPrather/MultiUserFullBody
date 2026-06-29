@@ -1,3 +1,10 @@
+/*
+ * Script Name: TurnToFace.cs
+ * Author: Mason Prather
+ * Description: Turn To Face controls controller callout and tooltip positioning used by the VR interaction UI.
+ * Project Role: Instructional UI support for VR controllers and hand-menu interactions.
+ */
+
 using UnityEngine;
 
 namespace Unity.VRTemplate

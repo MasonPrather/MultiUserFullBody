@@ -1,7 +1,18 @@
+/*
+ * Script Name: M_NetworkedPhotoSync.cs
+ * Author: Mason Prather
+ * Description: Bridges local image selections and phone uploads into XRINetworkPlayer shared-media synchronization so connected clients display the same photo.
+ * Project Role: Shared media relay between the local gallery/display layer and the multiplayer avatar/network layer.
+ * Key Inputs: Prepared image payloads, selected gallery items, loaded Texture2D instances, and XRINetworkPlayer shared-media callbacks.
+ * Key Outputs: Local photo display updates, JPEG-encoded network payloads, and remote shared-media display updates.
+ */
+
 using System;
 using System.Collections;
-using System.Reflection;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+using XRMultiplayer;
 
 /// <summary>
 /// Bridges local media imports and phone uploads with the active multiplayer player object.
@@ -15,17 +26,109 @@ public class M_NetworkedPhotoSync : MonoBehaviour
     [SerializeField] private float localPlayerLookupTimeout = 3f;
     [SerializeField] private float duplicateBroadcastWindowSeconds = 2f;
     [SerializeField] private bool verboseLogging = true;
+    [SerializeField] private bool clearDisplayWhenSceneReceiverInitializes = true;
+    [SerializeField] private bool clearDisplayWhenLocalPlayerSpawns = true;
 
     private int _lastBroadcastSignature;
     private float _lastBroadcastTime = -999f;
-    private Type _networkPlayerType;
-    private EventInfo _sharedMediaReceivedEvent;
-    private Delegate _sharedMediaReceivedHandler;
+    private bool _clearedLocalDisplayForJoin;
+    private bool _receivedSharedMediaThisScene;
+    private bool _hasLocalMediaInteraction;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void BootstrapSceneReceiver()
+    {
+        SceneManager.sceneLoaded -= HandleSceneLoaded;
+        SceneManager.sceneLoaded += HandleSceneLoaded;
+        EnsureSceneReceiver();
+    }
+
+    private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        EnsureSceneReceiver();
+    }
+
+    private static void EnsureSceneReceiver()
+    {
+        M_NetworkedPhotoSync existingSync = UnityEngine.Object.FindFirstObjectByType<M_NetworkedPhotoSync>();
+        M_QuestPhotoDisplay display = ResolveSceneDisplay();
+
+        if (existingSync != null)
+        {
+            if (existingSync.photoDisplay == null && display != null)
+                existingSync.Initialize(display);
+
+            return;
+        }
+
+        if (display == null)
+            return;
+
+        M_NetworkedPhotoSync sync = display.GetComponent<M_NetworkedPhotoSync>();
+        if (sync == null)
+            sync = display.gameObject.AddComponent<M_NetworkedPhotoSync>();
+
+        sync.Initialize(display);
+    }
+
+    private static M_QuestPhotoDisplay ResolveSceneDisplay()
+    {
+        M_QuestPhotoDisplay display = UnityEngine.Object.FindFirstObjectByType<M_QuestPhotoDisplay>();
+        if (display != null)
+            return display;
+
+        RawImage rawImage = FindRawImageByName("LatestUploadImage");
+        if (rawImage == null)
+            return null;
+
+        display = rawImage.GetComponent<M_QuestPhotoDisplay>();
+        if (display == null)
+            display = rawImage.gameObject.AddComponent<M_QuestPhotoDisplay>();
+
+        if (display.targetRawImage == null)
+            display.targetRawImage = rawImage;
+
+        if (display.rawImageFitBounds == null)
+            display.rawImageFitBounds = rawImage.rectTransform != null
+                ? rawImage.rectTransform.parent as RectTransform
+                : null;
+
+        return display;
+    }
+
+    private static RawImage FindRawImageByName(string objectName)
+    {
+        if (string.IsNullOrWhiteSpace(objectName))
+            return null;
+
+        RawImage[] rawImages = UnityEngine.Object.FindObjectsByType<RawImage>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        RawImage inactiveMatch = null;
+
+        for (int i = 0; i < rawImages.Length; i++)
+        {
+            RawImage rawImage = rawImages[i];
+            if (rawImage == null || !string.Equals(rawImage.name, objectName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (rawImage.gameObject.activeInHierarchy)
+                return rawImage;
+
+            if (inactiveMatch == null)
+                inactiveMatch = rawImage;
+        }
+
+        return inactiveMatch;
+    }
 
     public void Initialize(M_QuestPhotoDisplay display)
     {
         if (photoDisplay == null)
             photoDisplay = display;
+
+        if (clearDisplayWhenSceneReceiverInitializes)
+            ClearLocalDisplayForJoin("scene receiver initialized");
     }
 
     private void Awake()
@@ -36,12 +139,19 @@ public class M_NetworkedPhotoSync : MonoBehaviour
 
     private void OnEnable()
     {
-        SubscribeSharedMediaReceived();
+        XRINetworkPlayer.onSharedMediaReceived -= HandleSharedMediaReceived;
+        XRINetworkPlayer.onSharedMediaReceived += HandleSharedMediaReceived;
+        XRINetworkPlayer.onLocalPlayerSpawned -= HandleLocalPlayerSpawned;
+        XRINetworkPlayer.onLocalPlayerSpawned += HandleLocalPlayerSpawned;
+
+        if (clearDisplayWhenSceneReceiverInitializes)
+            ClearLocalDisplayForJoin("scene receiver enabled");
     }
 
     private void OnDisable()
     {
-        UnsubscribeSharedMediaReceived();
+        XRINetworkPlayer.onSharedMediaReceived -= HandleSharedMediaReceived;
+        XRINetworkPlayer.onLocalPlayerSpawned -= HandleLocalPlayerSpawned;
     }
 
     public void UploadSelectedItem(M_QuestGalleryAndroidBridge bridge, M_QuestGalleryAndroidBridge.GalleryItem item)
@@ -70,19 +180,16 @@ public class M_NetworkedPhotoSync : MonoBehaviour
         StartCoroutine(BroadcastImageBytesCoroutine(fileName, encodedBytes));
     }
 
-    private object ResolveLocalPlayer()
+    private XRINetworkPlayer ResolveLocalPlayer()
     {
-        if (!TryResolveNetworkPlayerType())
-            return null;
-
-        object localPlayer = GetStaticMemberValue(_networkPlayerType, "LocalPlayer");
+        XRINetworkPlayer localPlayer = XRINetworkPlayer.LocalPlayer;
         if (localPlayer != null)
             return localPlayer;
 
-        UnityEngine.Object[] players = UnityEngine.Object.FindObjectsOfType(_networkPlayerType);
+        XRINetworkPlayer[] players = UnityEngine.Object.FindObjectsByType<XRINetworkPlayer>(FindObjectsSortMode.None);
         for (int i = 0; i < players.Length; i++)
         {
-            if (players[i] != null && GetBoolMemberValue(players[i], "IsLocalPlayer", false))
+            if (players[i] != null && players[i].IsLocalPlayer)
                 return players[i];
         }
 
@@ -152,7 +259,7 @@ public class M_NetworkedPhotoSync : MonoBehaviour
         {
             encodedBytes = ImageConversion.EncodeToJPG(texture, Mathf.Clamp(jpegQuality, 1, 100));
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             Debug.LogWarning($"[M_NetworkedPhotoSync] Failed to encode texture '{fileName}' for synchronization: {ex.Message}");
         }
@@ -177,7 +284,9 @@ public class M_NetworkedPhotoSync : MonoBehaviour
             yield break;
         }
 
-        object localPlayer = null;
+        _hasLocalMediaInteraction = true;
+
+        XRINetworkPlayer localPlayer = null;
         float playerLookupTimer = 0f;
         float timeout = Mathf.Max(0.1f, localPlayerLookupTimeout);
 
@@ -210,6 +319,8 @@ public class M_NetworkedPhotoSync : MonoBehaviour
         if (!isActiveAndEnabled || photoDisplay == null || encodedBytes == null || encodedBytes.Length == 0)
             return;
 
+        _receivedSharedMediaThisScene = true;
+
         Texture2D syncedTexture = new Texture2D(2, 2, TextureFormat.RGBA32, true);
 
         if (!ImageConversion.LoadImage(syncedTexture, encodedBytes, markNonReadable: false))
@@ -230,6 +341,24 @@ public class M_NetworkedPhotoSync : MonoBehaviour
             Debug.Log($"[M_NetworkedPhotoSync] Applied synchronized image '{fileName}' ({syncedTexture.width}x{syncedTexture.height}).");
 
         photoDisplay.DisplayTexture(syncedTexture, fileName);
+    }
+
+    private void HandleLocalPlayerSpawned()
+    {
+        if (clearDisplayWhenLocalPlayerSpawns)
+            ClearLocalDisplayForJoin("local player spawned");
+    }
+
+    private void ClearLocalDisplayForJoin(string reason)
+    {
+        if (_clearedLocalDisplayForJoin || _receivedSharedMediaThisScene || _hasLocalMediaInteraction || photoDisplay == null)
+            return;
+
+        photoDisplay.ClearDisplay();
+        _clearedLocalDisplayForJoin = true;
+
+        if (verboseLogging)
+            Debug.Log($"[M_NetworkedPhotoSync] Cleared local image display on join ({reason}).");
     }
 
     private bool IsDuplicateRecentBroadcast(string fileName, byte[] bytes)
@@ -271,122 +400,21 @@ public class M_NetworkedPhotoSync : MonoBehaviour
         }
     }
 
-    private void SubscribeSharedMediaReceived()
-    {
-        if (!TryResolveNetworkPlayerType() || _sharedMediaReceivedHandler != null)
-            return;
-
-        _sharedMediaReceivedEvent = _networkPlayerType.GetEvent("onSharedMediaReceived", BindingFlags.Public | BindingFlags.Static);
-        if (_sharedMediaReceivedEvent == null)
-            return;
-
-        MethodInfo handlerMethod = GetType().GetMethod(nameof(HandleSharedMediaReceived), BindingFlags.Instance | BindingFlags.NonPublic);
-        if (handlerMethod == null)
-            return;
-
-        try
-        {
-            _sharedMediaReceivedHandler = Delegate.CreateDelegate(_sharedMediaReceivedEvent.EventHandlerType, this, handlerMethod);
-            _sharedMediaReceivedEvent.AddEventHandler(null, _sharedMediaReceivedHandler);
-        }
-        catch (Exception ex)
-        {
-            _sharedMediaReceivedHandler = null;
-            if (verboseLogging)
-                Debug.LogWarning($"[M_NetworkedPhotoSync] Could not subscribe to shared media events: {ex.Message}");
-        }
-    }
-
-    private void UnsubscribeSharedMediaReceived()
-    {
-        if (_sharedMediaReceivedEvent == null || _sharedMediaReceivedHandler == null)
-            return;
-
-        try
-        {
-            _sharedMediaReceivedEvent.RemoveEventHandler(null, _sharedMediaReceivedHandler);
-        }
-        catch (Exception ex)
-        {
-            if (verboseLogging)
-                Debug.LogWarning($"[M_NetworkedPhotoSync] Could not unsubscribe from shared media events: {ex.Message}");
-        }
-        finally
-        {
-            _sharedMediaReceivedEvent = null;
-            _sharedMediaReceivedHandler = null;
-        }
-    }
-
-    private bool TryResolveNetworkPlayerType()
-    {
-        if (_networkPlayerType != null)
-            return true;
-
-        Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-        for (int i = 0; i < assemblies.Length; i++)
-        {
-            _networkPlayerType = assemblies[i].GetType("XRMultiplayer.XRINetworkPlayer");
-            if (_networkPlayerType != null)
-                return true;
-        }
-
-        return false;
-    }
-
-    private bool IsReadyLocalPlayer(object localPlayer)
+    private bool IsReadyLocalPlayer(XRINetworkPlayer localPlayer)
     {
         return localPlayer != null &&
-               GetBoolMemberValue(localPlayer, "IsSpawned", false) &&
-               GetBoolMemberValue(localPlayer, "IsOwner", false);
+               localPlayer.IsSpawned &&
+               localPlayer.IsOwner;
     }
 
-    private void InvokeBroadcastSharedMedia(object localPlayer, string fileName, byte[] encodedBytes)
+    private void InvokeBroadcastSharedMedia(XRINetworkPlayer localPlayer, string fileName, byte[] encodedBytes)
     {
-        MethodInfo method = localPlayer.GetType().GetMethod("BroadcastSharedMedia", BindingFlags.Public | BindingFlags.Instance);
-        if (method == null)
+        if (localPlayer == null)
         {
-            Debug.LogWarning("[M_NetworkedPhotoSync] Local network player has no BroadcastSharedMedia method.");
+            Debug.LogWarning("[M_NetworkedPhotoSync] Local network player is unavailable.");
             return;
         }
 
-        try
-        {
-            method.Invoke(localPlayer, new object[] { fileName, encodedBytes });
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[M_NetworkedPhotoSync] BroadcastSharedMedia failed: {ex.Message}");
-        }
-    }
-
-    private static object GetStaticMemberValue(Type type, string memberName)
-    {
-        if (type == null || string.IsNullOrWhiteSpace(memberName))
-            return null;
-
-        PropertyInfo property = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Static);
-        if (property != null)
-            return property.GetValue(null, null);
-
-        FieldInfo field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Static);
-        return field != null ? field.GetValue(null) : null;
-    }
-
-    private static bool GetBoolMemberValue(object target, string memberName, bool fallback)
-    {
-        if (target == null || string.IsNullOrWhiteSpace(memberName))
-            return fallback;
-
-        Type type = target.GetType();
-        PropertyInfo property = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
-        if (property != null && property.PropertyType == typeof(bool))
-            return (bool)property.GetValue(target, null);
-
-        FieldInfo field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance);
-        if (field != null && field.FieldType == typeof(bool))
-            return (bool)field.GetValue(target);
-
-        return fallback;
+        localPlayer.BroadcastSharedMedia(fileName, encodedBytes);
     }
 }

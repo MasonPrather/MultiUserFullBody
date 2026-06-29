@@ -1,3 +1,10 @@
+/*
+ * Script Name: DelayedUnityEvent.cs
+ * Author: Mason Prather
+ * Description: Delayed Unity Event provides reusable scene helpers for following, pooling, resetting, toggling, clamping, and XR affordance behavior.
+ * Project Role: Utility layer used across shared VR scenes and prefabs.
+ */
+
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;

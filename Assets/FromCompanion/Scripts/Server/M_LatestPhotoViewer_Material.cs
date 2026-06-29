@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_LatestPhotoViewer_Material.cs
+ * Author: Mason Prather
+ * Description: Polls the latest saved phone-upload path and applies the newest uploaded image to a renderer material texture slot.
+ * Project Role: Server-scene material display path for phone-upload verification and presentation surfaces.
+ * Key Inputs: M_SimpleHttpServer.LastSavedPhotoPath, uploaded image bytes, target renderer/material slot settings.
+ * Key Outputs: Runtime material texture updates and status logs.
+ */
+
 using System.Collections;
 using System.IO;
 using UnityEngine;

@@ -1,3 +1,10 @@
+/*
+ * Script Name: PlayerHudNotification.cs
+ * Author: Mason Prather
+ * Description: Player Hud Notification controls local and remote player presentation, name tags, hand poses, HUD notifications, and appearance controls.
+ * Project Role: Player presentation layer for shared VR sessions.
+ */
+
 using System.Collections;
 using TMPro;
 using UnityEngine;

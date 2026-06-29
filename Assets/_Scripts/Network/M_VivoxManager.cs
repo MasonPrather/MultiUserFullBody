@@ -1,3 +1,12 @@
+/*
+ * Script Name: M_VivoxManager.cs
+ * Author: Mason Prather
+ * Description: Initializes Unity Services, signs into Vivox, joins/leaves positional voice channels, and manages the local Vivox audio tap lifecycle.
+ * Project Role: Voice communication coordinator for multiplayer menu and session flows.
+ * Key Inputs: Unity Services authentication state, Vivox channel names, optional local audio tap prefab, and menu manager calls.
+ * Key Outputs: Vivox login state, channel membership, local audio tap instance, and readiness/channel events.
+ */
+
 using UnityEngine;
 using Unity.Services.Core;
 using Unity.Services.Authentication;
@@ -20,17 +29,13 @@ public class M_VivoxManager : MonoBehaviour
     public event System.Action<string> ChannelJoined;
     public event System.Action<string> ChannelLeft;
 
-    // ---- internal state
     static Task _initTask;
     static bool _initialized;
     bool _isLoggedIn;
 
     string _currentChannelName;
 
-    // local-only audio tap instance (client side only; not networked)
     VivoxAudioTap _tap;
-
-    // ---------------------- LIFECYCLE ----------------------
 
     private async void Awake()
     {
@@ -44,8 +49,6 @@ public class M_VivoxManager : MonoBehaviour
     {
         await SafeTearDownAsync();
     }
-
-    // ---------------------- INIT (idempotent) ----------------------
 
     public async Task InitializeVivoxAsync()
     {
@@ -81,30 +84,27 @@ public class M_VivoxManager : MonoBehaviour
         VivoxReady?.Invoke();
     }
 
-    // ---------------------- JOIN / LEAVE (async) ----------------------
-
     public async Task JoinChannelAsync(string channelName)
     {
         if (!_isLoggedIn)
         {
-            Debug.LogWarning("[Vivox] Join requested before login; waiting for init…");
+            Debug.LogWarning("[Vivox] Join requested before login; waiting for initialization.");
             await InitializeVivoxAsync();
         }
 
-        // If already in a channel, leave first (unless it's the same)
         if (!string.IsNullOrEmpty(_currentChannelName))
         {
             if (_currentChannelName == channelName)
             {
                 Debug.Log($"[Vivox] Already in channel '{channelName}'.");
                 ChannelJoined?.Invoke(channelName);
-                EnsureAudioTapActive(); // make sure tap is on
+                EnsureAudioTapActive();
                 return;
             }
             await LeaveChannelAsync();
         }
 
-        // 3D positional example; swap to group if you prefer
+        // Positional channel properties match the room-scale voice behavior used by the shared VR scenes.
         var props = new Channel3DProperties(
             audibleDistance: 50,
             conversationalDistance: 2,
@@ -112,7 +112,6 @@ public class M_VivoxManager : MonoBehaviour
             audioFadeModel: AudioFadeModel.InverseByDistance
         );
 
-        // NOTE: This returns Task (no handle)
         await VivoxService.Instance.JoinPositionalChannelAsync(
             channelName,
             ChatCapability.AudioOnly,
@@ -121,7 +120,6 @@ public class M_VivoxManager : MonoBehaviour
 
         _currentChannelName = channelName;
 
-        // Enable/register local tap AFTER join
         EnsureAudioTapActive();
 
         Debug.Log($"[Vivox] Joined channel: {channelName}");
@@ -135,7 +133,7 @@ public class M_VivoxManager : MonoBehaviour
 
         var name = _currentChannelName;
 
-        // Turn off/destroy local tap before leaving to avoid “unknown channel”
+        // Destroy the local audio tap before leaving so Vivox does not retain a stale channel binding.
         DestroyTap();
 
         try
@@ -157,17 +155,12 @@ public class M_VivoxManager : MonoBehaviour
         _currentChannelName = null;
     }
 
-    // ---------------------- AUDIO TAP (local-only) ----------------------
-    // The current VivoxAudioTap auto-registers on OnEnable / UpdateStatus().
-    // We only control WHEN it comes alive (after join), and kill it before leave.
-
     void EnsureAudioTapActive()
     {
         if (audioTapPrefab == null) return;
 
         if (_tap == null)
         {
-            // Instantiate disabled → then enable so OnEnable runs AFTER join
             var go = Instantiate(audioTapPrefab);
             go.SetActive(false);
             _tap = go.GetComponent<VivoxAudioTap>();
@@ -183,13 +176,11 @@ public class M_VivoxManager : MonoBehaviour
     {
         if (_tap != null)
         {
-            // No UnregisterTap / IsRegistered API in this package; disabling/destroying is the supported path
+            // The Vivox package used here does not expose an unregister call for this tap.
             Destroy(_tap.gameObject);
             _tap = null;
         }
     }
-
-    // ---------------------- TEARDOWN ----------------------
 
     async Task SafeTearDownAsync()
     {
@@ -200,9 +191,6 @@ public class M_VivoxManager : MonoBehaviour
         try { await VivoxService.Instance.LogoutAsync(); } catch { }
         _isLoggedIn = false;
     }
-
-    // ---------------------- LEGACY WRAPPERS (for existing callers) ----------------------
-    // Your M_MenuManager was calling these names; keep them for compatibility.
 
     public void JoinChannel(string lobbyName) { _ = JoinChannelAsync(lobbyName); }
     public void LeaveChannel() { _ = LeaveChannelAsync(); }

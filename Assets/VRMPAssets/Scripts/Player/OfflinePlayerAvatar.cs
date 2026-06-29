@@ -1,3 +1,10 @@
+/*
+ * Script Name: OfflinePlayerAvatar.cs
+ * Author: Mason Prather
+ * Description: Offline Player Avatar controls local and remote player presentation, name tags, hand poses, HUD notifications, and appearance controls.
+ * Project Role: Player presentation layer for shared VR sessions.
+ */
+
 using Unity.XR.CoreUtils;
 using Unity.XR.CoreUtils.Bindings.Variables;
 using UnityEngine;

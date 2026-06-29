@@ -1,3 +1,10 @@
+/*
+ * Script Name: Lock.cs
+ * Author: Mason Prather
+ * Description: Lock provides key/keychain/lock data structures for gated interactable behavior.
+ * Project Role: Interaction helper used by keyed scene objects.
+ */
+
 using System;
 using System.Collections.Generic;
 
