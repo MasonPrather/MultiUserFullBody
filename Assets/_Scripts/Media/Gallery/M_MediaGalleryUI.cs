@@ -87,23 +87,23 @@ public class M_MediaGalleryUI : MonoBehaviour
             CreateTile(records[i]);
 
         if (records.Count == 0)
-            SetStatus("No imported photos yet.");
+            SetStatus("No imported media yet.");
         else
-            SetStatus($"{records.Count} photo{(records.Count == 1 ? string.Empty : "s")} in your Quest gallery.");
+            SetStatus($"{records.Count} item{(records.Count == 1 ? string.Empty : "s")} in your Quest gallery.");
     }
 
     public void ShareSelectedFromUi()
     {
         if (_selectedRecord == null)
         {
-            SetStatus("Choose a photo before sharing.");
+            SetStatus("Choose a media item before sharing.");
             return;
         }
 
         if (requireShareConfirmation && !_awaitingShareConfirmation)
         {
             _awaitingShareConfirmation = true;
-            SetStatus("Share this photo with everyone in the current lobby?");
+            SetStatus($"Share this {M_MediaTypeUtility.DisplayNoun(_selectedRecord.kind)} with everyone in the current lobby?");
             return;
         }
 
@@ -160,9 +160,12 @@ public class M_MediaGalleryUI : MonoBehaviour
             selectedTitleText.text = _selectedRecord != null ? _selectedRecord.displayName : string.Empty;
 
         ClearPreview();
-        string fullPath = mediaLibrary.ResolveFullPath(_selectedRecord);
-        if (!string.IsNullOrWhiteSpace(fullPath))
-            StartCoroutine(LoadPreview(fullPath));
+        string previewPath = M_MediaTypeUtility.IsVideoKind(_selectedRecord.kind)
+            ? mediaLibrary.ResolveThumbnailPath(_selectedRecord)
+            : mediaLibrary.ResolveFullPath(_selectedRecord);
+
+        if (!string.IsNullOrWhiteSpace(previewPath))
+            StartCoroutine(LoadPreview(previewPath));
     }
 
     private void HandleTileShareRequested(M_MediaTile tile)

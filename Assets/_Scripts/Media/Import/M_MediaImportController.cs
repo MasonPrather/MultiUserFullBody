@@ -29,6 +29,10 @@ public class M_MediaImportController : MonoBehaviour
     [SerializeField, Range(1, 100)] private int thumbnailJpgQuality = 78;
     [SerializeField] private int thumbnailMaxBytes = 64 * 1024;
 
+    [Header("Video Import Limits")]
+    [Tooltip("Phone-uploaded video files larger than this are rejected before being copied into the Quest media library.")]
+    [SerializeField] private int maxVideoInputBytes = 128 * 1024 * 1024;
+
     [Header("Debug")]
     [SerializeField] private bool verboseLogging = true;
 
@@ -46,6 +50,20 @@ public class M_MediaImportController : MonoBehaviour
         ResolveReferences();
     }
 
+    public M_MediaImportResult ImportMediaBytes(byte[] inputBytes, string mime, string originalFileName)
+    {
+        string normalizedMime = M_MediaTypeUtility.NormalizeMime(mime, originalFileName, inputBytes);
+        if (M_MediaTypeUtility.IsSupportedImageMime(normalizedMime))
+            return ImportImageBytes(inputBytes, normalizedMime, originalFileName);
+
+        if (M_MediaTypeUtility.IsSupportedVideoMime(normalizedMime))
+            return ImportVideoBytes(inputBytes, normalizedMime, originalFileName);
+
+        return M_MediaImportResult.Fail(
+            M_MediaImportFailure.UnsupportedType,
+            "Only JPG, PNG, MP4, MOV, M4V, and WebM media files are supported right now.");
+    }
+
     public M_MediaImportResult ImportImageBytes(byte[] inputBytes, string mime, string originalFileName)
     {
         ResolveReferences();
@@ -61,9 +79,9 @@ public class M_MediaImportController : MonoBehaviour
         if (inputBytes.Length > maxInputBytes)
             return M_MediaImportResult.Fail(M_MediaImportFailure.TooLarge, $"That file is too large. Please choose a JPG or PNG under {FormatBytes(maxInputBytes)}.");
 
-        string normalizedMime = NormalizeMime(mime, originalFileName, inputBytes);
-        if (normalizedMime != "image/jpeg" && normalizedMime != "image/png")
-            return M_MediaImportResult.Fail(M_MediaImportFailure.UnsupportedType, "Only JPG and PNG photos are supported right now. Video sharing is intentionally disabled for this release.");
+        string normalizedMime = M_MediaTypeUtility.NormalizeMime(mime, originalFileName, inputBytes);
+        if (!M_MediaTypeUtility.IsSupportedImageMime(normalizedMime))
+            return M_MediaImportResult.Fail(M_MediaImportFailure.UnsupportedType, "Only JPG and PNG photos are supported by the image importer.");
 
         Texture2D decoded = new Texture2D(2, 2, TextureFormat.RGBA32, false);
         try
@@ -89,12 +107,13 @@ public class M_MediaImportController : MonoBehaviour
                 if (verboseLogging)
                     Debug.Log($"[M_MediaImportController] Duplicate import reused mediaId={existing.mediaId}, sha={sha256}.");
 
+                string noun = M_MediaTypeUtility.DisplayNoun(existing.kind);
                 return M_MediaImportResult.Ok(
                     existing,
                     mediaLibrary.ResolveFullPath(existing),
                     mediaLibrary.ResolveThumbnailPath(existing),
                     duplicate: true,
-                    message: "This photo is already in your Quest gallery.");
+                    message: $"This {noun} is already in your Quest gallery.");
             }
 
             byte[] thumb = M_MediaThumbnailGenerator.EncodeThumbnailUnderLimit(
@@ -125,7 +144,7 @@ public class M_MediaImportController : MonoBehaviour
             M_MediaRecord record = new M_MediaRecord
             {
                 mediaId = CreateMediaId(),
-                kind = "image",
+                kind = M_MediaTypeUtility.KindImage,
                 mime = "image/jpeg",
                 sha256 = sha256,
                 relativePath = mediaRelativePath,
@@ -155,19 +174,113 @@ public class M_MediaImportController : MonoBehaviour
         }
     }
 
+    public M_MediaImportResult ImportVideoBytes(byte[] inputBytes, string mime, string originalFileName)
+    {
+        ResolveReferences();
+
+        if (mediaLibrary == null)
+            return M_MediaImportResult.Fail(M_MediaImportFailure.IoError, "Media library is not configured.");
+
+        mediaLibrary.Initialize();
+
+        if (inputBytes == null || inputBytes.Length == 0)
+            return M_MediaImportResult.Fail(M_MediaImportFailure.EmptyInput, "No file was received.");
+
+        if (inputBytes.Length > maxVideoInputBytes)
+            return M_MediaImportResult.Fail(M_MediaImportFailure.TooLarge, $"That video is too large. Please choose a video under {FormatBytes(maxVideoInputBytes)}.");
+
+        string normalizedMime = M_MediaTypeUtility.NormalizeMime(mime, originalFileName, inputBytes);
+        if (!M_MediaTypeUtility.IsSupportedVideoMime(normalizedMime))
+            return M_MediaImportResult.Fail(M_MediaImportFailure.UnsupportedType, "Only MP4, MOV, M4V, and WebM videos are supported right now.");
+
+        try
+        {
+            string sha256 = M_MediaHashUtility.Sha256Hex(inputBytes);
+            M_MediaRecord existing = mediaLibrary.GetBySha256(sha256);
+            if (existing != null && mediaLibrary.ContainsCompleteFiles(existing))
+            {
+                if (verboseLogging)
+                    Debug.Log($"[M_MediaImportController] Duplicate video import reused mediaId={existing.mediaId}, sha={sha256}.");
+
+                return M_MediaImportResult.Ok(
+                    existing,
+                    mediaLibrary.ResolveFullPath(existing),
+                    mediaLibrary.ResolveThumbnailPath(existing),
+                    duplicate: true,
+                    message: "This video is already in your Quest gallery.");
+            }
+
+            byte[] thumb = M_MediaThumbnailGenerator.EncodeVideoPlaceholderJpg(
+                thumbnailLongEdge,
+                thumbnailJpgQuality,
+                out int thumbWidth,
+                out int thumbHeight);
+
+            if (thumb == null || thumb.Length == 0)
+                return M_MediaImportResult.Fail(M_MediaImportFailure.InvalidVideo, "The video imported, but a gallery thumbnail could not be generated.");
+
+            if (thumb.Length > thumbnailMaxBytes)
+                return M_MediaImportResult.Fail(M_MediaImportFailure.TooLarge, "The thumbnail for this video is too large.");
+
+            string extension = M_MediaTypeUtility.ExtensionForMime(normalizedMime, originalFileName);
+            string mediaRelativePath = $"{M_MediaPaths.VideosDirectory}/{sha256}{extension}";
+            string thumbRelativePath = $"{M_MediaPaths.ThumbsDirectory}/{sha256}_{thumbnailLongEdge}.jpg";
+            string mediaPath = mediaLibrary.ResolveRelativePath(mediaRelativePath);
+            string thumbPath = mediaLibrary.ResolveRelativePath(thumbRelativePath);
+
+            if (string.IsNullOrEmpty(mediaPath) || string.IsNullOrEmpty(thumbPath))
+                return M_MediaImportResult.Fail(M_MediaImportFailure.IoError, "The media storage path could not be created safely.");
+
+            WriteBytesAtomically(mediaPath, inputBytes);
+            WriteBytesAtomically(thumbPath, thumb);
+
+            M_MediaRecord record = new M_MediaRecord
+            {
+                mediaId = CreateMediaId(),
+                kind = M_MediaTypeUtility.KindVideo,
+                mime = normalizedMime,
+                sha256 = sha256,
+                relativePath = mediaRelativePath,
+                thumbPath = thumbRelativePath,
+                width = thumbWidth,
+                height = thumbHeight,
+                byteSize = inputBytes.Length,
+                createdUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                displayName = M_MediaPaths.SafeDisplayName(originalFileName)
+            };
+
+            mediaLibrary.AddOrUpdateRecord(record);
+
+            if (verboseLogging)
+                Debug.Log($"[M_MediaImportController] Imported video {record.displayName} as mediaId={record.mediaId}, sha={record.sha256}, bytes={record.byteSize}.");
+
+            return M_MediaImportResult.Ok(record, mediaPath, thumbPath, duplicate: false, message: "Video imported into your Quest gallery.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[M_MediaImportController] Video import failed: {e}");
+            return M_MediaImportResult.Fail(M_MediaImportFailure.Unknown, "The video could not be imported. Please try another MP4, MOV, M4V, or WebM file.");
+        }
+    }
+
     public bool TryImportReceivedImageToLibrary(string sourcePath, string displayName, out M_MediaImportResult result)
+    {
+        return TryImportReceivedMediaToLibrary(sourcePath, displayName, "image/jpeg", out result);
+    }
+
+    public bool TryImportReceivedMediaToLibrary(string sourcePath, string displayName, string mime, out M_MediaImportResult result)
     {
         result = null;
         if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
         {
-            result = M_MediaImportResult.Fail(M_MediaImportFailure.IoError, "The received image file could not be found.");
+            result = M_MediaImportResult.Fail(M_MediaImportFailure.IoError, "The received media file could not be found.");
             return false;
         }
 
         try
         {
             byte[] bytes = File.ReadAllBytes(sourcePath);
-            result = ImportImageBytes(bytes, "image/jpeg", displayName);
+            result = ImportMediaBytes(bytes, mime, displayName);
             return result != null && result.Success;
         }
         catch (Exception e)
@@ -184,34 +297,6 @@ public class M_MediaImportController : MonoBehaviour
 
         if (mediaLibrary == null)
             mediaLibrary = FindFirstObjectByType<M_MediaLibrary>();
-    }
-
-    private static string NormalizeMime(string mime, string fileName, byte[] bytes)
-    {
-        string lower = string.IsNullOrWhiteSpace(mime) ? string.Empty : mime.Trim().ToLowerInvariant();
-        if (lower == "image/jpg")
-            lower = "image/jpeg";
-
-        if (lower == "image/jpeg" || lower == "image/png")
-            return lower;
-
-        if (bytes != null && bytes.Length >= 8)
-        {
-            if (bytes[0] == 0xFF && bytes[1] == 0xD8)
-                return "image/jpeg";
-
-            if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)
-                return "image/png";
-        }
-
-        string extension = Path.GetExtension(fileName)?.ToLowerInvariant();
-        if (extension == ".jpg" || extension == ".jpeg")
-            return "image/jpeg";
-
-        if (extension == ".png")
-            return "image/png";
-
-        return lower;
     }
 
     private static void WriteBytesAtomically(string finalPath, byte[] bytes)

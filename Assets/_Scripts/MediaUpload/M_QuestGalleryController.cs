@@ -2,7 +2,7 @@
  * Script Name: M_QuestGalleryController.cs
  * Author: Mason Prather
  * Description: Coordinates the Quest media gallery UI, device picker imports, phone/shared imports, tile selection, deletion, and optional network broadcast.
- * Project Role: Primary media browser controller for selecting and sharing images inside the Unity experience.
+ * Project Role: Primary media browser controller for selecting and sharing media inside the Unity experience.
  * Key Inputs: Gallery bridge scan results, ImagePicker prepared payloads, pending Android share imports, tile prefab references, and display/network sync references.
  * Key Outputs: Spawned gallery tiles, selected image display updates, imported-media records, deletion operations, status labels, and shared-media broadcasts.
  */
@@ -19,7 +19,7 @@ using UnityEngine.UI;
 /// Responsibilities:
 /// - Route user-driven imports through the NativeGallery-backed ImagePicker.
 /// - Keep the older tile browser available for manual refresh/debug workflows.
-/// - Route selected image to the large display
+/// - Route selected media to the large display
 /// </summary>
 public class M_QuestGalleryController : MonoBehaviour
 {
@@ -30,7 +30,7 @@ public class M_QuestGalleryController : MonoBehaviour
     [Tooltip("Parent transform that receives spawned tile prefabs.")]
     public Transform tileParent;
 
-    [Tooltip("Tile prefab used for each gallery image.")]
+    [Tooltip("Tile prefab used for each gallery item.")]
     public M_QuestGalleryTile tilePrefab;
 
     [Tooltip("Photo display target for the selected image.")]
@@ -302,7 +302,7 @@ public class M_QuestGalleryController : MonoBehaviour
             if (TrySharePreparedPickerImage())
                 return;
 
-            SetStatus("Select an image first");
+            SetStatus("Select a media item first");
             return;
         }
 
@@ -315,6 +315,16 @@ public class M_QuestGalleryController : MonoBehaviour
         if (androidBridge == null)
         {
             Debug.LogWarning("[M_QuestGalleryController] UploadSelected failed: androidBridge is not assigned.");
+            return;
+        }
+
+        if (androidBridge.IsVideoItem(_selectedItem))
+        {
+            photoDisplay.DisplayVideo(_selectedItem.filePath, _selectedItem.fileName);
+            if (_networkedPhotoSync != null)
+                _networkedPhotoSync.BroadcastVideoFile(_selectedItem.filePath, _selectedItem.fileName);
+
+            SetStatus($"Shared: {_selectedItem.fileName}");
             return;
         }
 

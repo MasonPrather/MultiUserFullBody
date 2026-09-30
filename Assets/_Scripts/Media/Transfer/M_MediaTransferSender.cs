@@ -111,7 +111,9 @@ public sealed class M_MediaTransferSender
             PayloadLength = payloadLength,
             TotalBytes = totalBytes,
             Width = entry.Width,
-            Height = entry.Height
+            Height = entry.Height,
+            Kind = entry.Kind,
+            Mime = entry.Mime
         };
     }
 }

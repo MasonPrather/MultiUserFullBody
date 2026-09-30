@@ -20,7 +20,8 @@ public class M_LobbyMediaShareController : NetworkBehaviour
     [SerializeField] private M_SessionMediaCache sessionCache;
 
     [Header("Limits")]
-    [SerializeField] private int maxShareBytes = 5 * 1024 * 1024;
+    [SerializeField] private int maxShareImageBytes = 5 * 1024 * 1024;
+    [SerializeField] private int maxShareVideoBytes = 64 * 1024 * 1024;
 
     [Header("Debug")]
     [SerializeField] private bool verboseLogging = true;
@@ -40,7 +41,7 @@ public class M_LobbyMediaShareController : NetworkBehaviour
 
         if (NetworkManager == null || !NetworkManager.IsListening)
         {
-            SetStatus("Join or host a lobby before sharing a photo.");
+            SetStatus("Join or host a lobby before sharing media.");
             return;
         }
 
@@ -66,7 +67,7 @@ public class M_LobbyMediaShareController : NetworkBehaviour
                 state: MediaShareState.Announced);
 
             ShareMediaRequestServerRpc(request);
-            SetStatus("Asking host to share photo...");
+            SetStatus($"Asking host to share {M_MediaTypeUtility.DisplayNoun(pending.Record.kind)}...");
         }
     }
 
@@ -86,13 +87,13 @@ public class M_LobbyMediaShareController : NetworkBehaviour
             pending.ThumbnailByteSize,
             MediaShareState.Announced);
 
-        sessionCache.CopyIntoCache(pending.FullPath, pending.Record.sha256, M_MediaTransferFileRole.FullImage, hostCache: true, out _, out _);
-        sessionCache.CopyIntoCache(pending.ThumbnailPath, pending.Record.sha256, M_MediaTransferFileRole.Thumbnail, hostCache: true, out _, out _);
+        sessionCache.CopyIntoCache(pending.FullPath, pending.Record.sha256, M_MediaTransferFileRole.FullMedia, true, out _, out _, pending.Record.mime);
+        sessionCache.CopyIntoCache(pending.ThumbnailPath, pending.Record.sha256, M_MediaTransferFileRole.Thumbnail, true, out _, out _, pending.Record.mime);
 
         catalog.AddOrUpdateServer(entry);
         catalog.SetStateServer(entry.Sequence, MediaShareState.Transferring);
         transferManager.SendHostMediaToClients(entry, pending.ThumbnailPath, pending.FullPath);
-        SetStatus("Sharing photo with everyone in the lobby.");
+        SetStatus($"Sharing {M_MediaTypeUtility.DisplayNoun(pending.Record.kind)} with everyone in the lobby.");
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -111,9 +112,9 @@ public class M_LobbyMediaShareController : NetworkBehaviour
         if (catalog.TryGetBySha256(sha, out SharedMediaEntry existing)
             && existing.State == MediaShareState.Ready
             && sessionCache != null
-            && sessionCache.HasVerifiedFile(sha, M_MediaTransferFileRole.FullImage, hostCache: true, expectedSha256: sha))
+            && sessionCache.HasVerifiedFile(sha, M_MediaTransferFileRole.FullMedia, true, sha, requestedEntry.Mime.ToString()))
         {
-            ShareRejectedClientRpc(new FixedString128Bytes("That photo is already shared in this lobby."), Target(senderClientId));
+            ShareRejectedClientRpc(new FixedString128Bytes("That media item is already shared in this lobby."), Target(senderClientId));
             return;
         }
 
@@ -140,7 +141,7 @@ public class M_LobbyMediaShareController : NetworkBehaviour
         }
 
         transferManager.SendLocalMediaToHost(acceptedEntry, pending.ThumbnailPath, pending.FullPath);
-        SetStatus("Sending photo to host for verification...");
+        SetStatus($"Sending {M_MediaTypeUtility.DisplayNoun(pending.Record.kind)} to host for verification...");
         _pendingLocalSharesBySha.Remove(sha);
     }
 
@@ -167,14 +168,13 @@ public class M_LobbyMediaShareController : NetworkBehaviour
         M_MediaRecord record = mediaLibrary.GetByMediaId(mediaId);
         if (record == null)
         {
-            failure = "Choose a gallery photo before sharing.";
+            failure = "Choose a gallery item before sharing.";
             return false;
         }
 
-        if (!string.Equals(record.kind, "image", StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(record.mime, "image/jpeg", StringComparison.OrdinalIgnoreCase))
+        if (!IsSupportedShareRecord(record))
         {
-            failure = "Only imported JPG photos can be shared with the lobby right now.";
+            failure = "Only imported JPG photos and supported videos can be shared with the lobby right now.";
             return false;
         }
 
@@ -182,27 +182,28 @@ public class M_LobbyMediaShareController : NetworkBehaviour
         string thumbPath = mediaLibrary.ResolveThumbnailPath(record);
         if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
         {
-            failure = "The selected photo file is missing from local storage.";
+            failure = "The selected media file is missing from local storage.";
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(thumbPath) || !File.Exists(thumbPath))
         {
-            failure = "The selected photo thumbnail is missing. Re-import the photo and try again.";
+            failure = "The selected media thumbnail is missing. Re-import the file and try again.";
             return false;
         }
 
         long byteSize = new FileInfo(fullPath).Length;
+        int maxShareBytes = GetMaxShareBytes(record.kind, record.mime);
         if (byteSize <= 0 || byteSize > maxShareBytes)
         {
-            failure = "This photo is too large to share in the lobby. Please import a smaller image.";
+            failure = $"This {M_MediaTypeUtility.DisplayNoun(record.kind)} is too large to share in the lobby.";
             return false;
         }
 
         string actualSha = M_MediaHashUtility.Sha256HexForFile(fullPath);
         if (!string.Equals(actualSha, record.sha256, StringComparison.OrdinalIgnoreCase))
         {
-            failure = "The selected photo failed local verification and will not be shared.";
+            failure = "The selected media failed local verification and will not be shared.";
             return false;
         }
 
@@ -216,36 +217,61 @@ public class M_LobbyMediaShareController : NetworkBehaviour
         return true;
     }
 
-    private static bool ValidateClientShareRequest(SharedMediaEntry entry, out string reason)
+    private bool ValidateClientShareRequest(SharedMediaEntry entry, out string reason)
     {
         string sha = entry.Sha256.ToString();
         if (sha.Length != 64)
         {
-            reason = "Host rejected the photo: invalid hash metadata.";
+            reason = "Host rejected the media: invalid hash metadata.";
             return false;
         }
 
-        if (!string.Equals(entry.Kind.ToString(), "image", StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(entry.Mime.ToString(), "image/jpeg", StringComparison.OrdinalIgnoreCase))
+        string kind = entry.Kind.ToString();
+        string mime = entry.Mime.ToString();
+        bool supportedImage = string.Equals(kind, M_MediaTypeUtility.KindImage, StringComparison.OrdinalIgnoreCase)
+                              && string.Equals(mime, "image/jpeg", StringComparison.OrdinalIgnoreCase);
+        bool supportedVideo = string.Equals(kind, M_MediaTypeUtility.KindVideo, StringComparison.OrdinalIgnoreCase)
+                              && M_MediaTypeUtility.IsSupportedVideoMime(mime);
+
+        if (!supportedImage && !supportedVideo)
         {
-            reason = "Host rejected the photo: only JPG images are supported.";
+            reason = "Host rejected the media: unsupported type.";
             return false;
         }
 
-        if (entry.ByteSize <= 0 || entry.ByteSize > 5 * 1024 * 1024)
+        if (entry.ByteSize <= 0 || entry.ByteSize > GetMaxShareBytes(kind, mime))
         {
-            reason = "Host rejected the photo: optimized file is too large.";
+            reason = "Host rejected the media: file is too large.";
             return false;
         }
 
         if (entry.ThumbnailByteSize <= 0 || entry.ThumbnailByteSize > 64 * 1024)
         {
-            reason = "Host rejected the photo: thumbnail is too large.";
+            reason = "Host rejected the media: thumbnail is too large.";
             return false;
         }
 
         reason = null;
         return true;
+    }
+
+    private bool IsSupportedShareRecord(M_MediaRecord record)
+    {
+        if (record == null)
+            return false;
+
+        if (string.Equals(record.kind, M_MediaTypeUtility.KindImage, StringComparison.OrdinalIgnoreCase))
+            return string.Equals(record.mime, "image/jpeg", StringComparison.OrdinalIgnoreCase);
+
+        return string.Equals(record.kind, M_MediaTypeUtility.KindVideo, StringComparison.OrdinalIgnoreCase)
+               && M_MediaTypeUtility.IsSupportedVideoMime(record.mime);
+    }
+
+    private int GetMaxShareBytes(string kind, string mime)
+    {
+        return M_MediaTypeUtility.IsVideoKind(kind) || M_MediaTypeUtility.IsVideoMime(mime)
+            ? maxShareVideoBytes
+            : maxShareImageBytes;
     }
 
     private static ClientRpcParams Target(ulong clientId)

@@ -24,7 +24,7 @@ public class M_QuestMediaHttpServer : MonoBehaviour
     [Header("Server")]
     [SerializeField] private int port = 29100;
     [SerializeField] private bool autoStart = true;
-    [SerializeField] private int maxRequestBytes = 24 * 1024 * 1024;
+    [SerializeField] private int maxRequestBytes = 160 * 1024 * 1024;
     [SerializeField] private int mainThreadTimeoutMs = 120000;
 
     [Header("Debug")]
@@ -269,17 +269,17 @@ public class M_QuestMediaHttpServer : MonoBehaviour
         MultipartFile file = ParseMultipartFile(request.Body, boundary);
         if (file == null || file.Bytes == null || file.Bytes.Length == 0)
         {
-            WriteText(stream, 400, "Bad Request", "No photo file was found in the upload.");
+            WriteText(stream, 400, "Bad Request", "No media file was found in the upload.");
             return;
         }
 
         QueueStatus($"Receiving {M_MediaPaths.SafeDisplayName(file.FileName)}...");
-        M_MediaImportResult result = RunOnMainThread(() => importController.ImportImageBytes(file.Bytes, file.ContentType, file.FileName), mainThreadTimeoutMs);
+        M_MediaImportResult result = RunOnMainThread(() => importController.ImportMediaBytes(file.Bytes, file.ContentType, file.FileName), mainThreadTimeoutMs);
 
         if (result == null)
         {
             QueueStatus("Upload timed out while importing.");
-            WriteText(stream, 500, "Import Timed Out", "The Quest did not finish importing the photo. Please try again.");
+            WriteText(stream, 500, "Import Timed Out", "The Quest did not finish importing the media file. Please try again.");
             return;
         }
 
@@ -291,9 +291,10 @@ public class M_QuestMediaHttpServer : MonoBehaviour
             return;
         }
 
+        string noun = result.Record != null ? M_MediaTypeUtility.DisplayNoun(result.Record.kind) : "media file";
         string response = result.Duplicate
-            ? "This photo was already in your Quest gallery."
-            : "Photo imported into your Quest gallery.";
+            ? $"This {noun} was already in your Quest gallery."
+            : $"{char.ToUpperInvariant(noun[0])}{noun.Substring(1)} imported into your Quest gallery.";
         WriteText(stream, 200, "OK", response);
     }
 
@@ -492,7 +493,7 @@ public class M_QuestMediaHttpServer : MonoBehaviour
 <head>
   <meta charset=""utf-8"">
   <meta name=""viewport"" content=""width=device-width, initial-scale=1"">
-  <title>MURPM Photo Upload</title>
+  <title>MURPM Media Upload</title>
   <style>
     body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;margin:0;padding:24px;background:#f8fafc;color:#111827;}
     main{max-width:560px;margin:0 auto;}
@@ -504,11 +505,11 @@ public class M_QuestMediaHttpServer : MonoBehaviour
 </head>
 <body>
 <main>
-  <h1>Upload a photo to Quest</h1>
+  <h1>Upload media to Quest</h1>
   <label>Pairing code shown in VR</label>
   <input id=""code"" inputmode=""numeric"" autocomplete=""one-time-code"" value=""" + HtmlEscape(code) + @""">
   <label>Photo or video</label>
-  <input id=""file"" type=""file"" accept=""image/*,video/*"">
+  <input id=""file"" type=""file"" accept=""image/*,video/mp4,video/quicktime,video/x-m4v,video/webm,video/*"">
   <button id=""upload"">Upload</button>
   <div id=""msg""></div>
 </main>

@@ -165,11 +165,12 @@ Transfer defaults:
 - queued shares: `10`
 - catalog/session history: `50`
 - full image cap: `5 MB`
+- full video cap: `64 MB`
 - thumbnail cap: `64 KB`
 
 ## 13. Known Limitations
 
-- Video lobby sharing is not implemented. Video upload is rejected by import with a friendly message unless future local-only video support is added.
+- Video lobby sharing now supports imported/uploaded video files with placeholder thumbnails and display-local audio, but transfer caps are intentionally lower than production video distribution would usually require.
 - LAN HTTP peer transfer is scaffolded but disabled by default.
 - KSU relay transport is a placeholder and makes no external service calls.
 - NGO transfer has no production-grade congestion control or ACK window yet. It uses reliable fragmented sequenced delivery with small chunks and verification.

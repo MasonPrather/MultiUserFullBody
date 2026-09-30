@@ -1,7 +1,7 @@
 /*
  * Script Name: M_MediaTransferManager.cs
  * Description: NGO named-message router for thumbnail-first media byte transfer.
- * Project Role: Host-authoritative fallback transport. It is intentionally capped and documented as unsuitable for video/bulk Relay use.
+ * Project Role: Host-authoritative fallback transport for bounded shared media bytes.
  */
 
 using System;
@@ -20,8 +20,11 @@ public class M_MediaTransferManager : NetworkBehaviour
     [SerializeField] private M_MediaLibrary mediaLibrary;
 
     [Header("Transfer Limits")]
-    [Tooltip("First-release hard cap for optimized JPG transfers through NGO. Do not raise casually, especially when Unity Relay is active.")]
+    [Tooltip("Hard cap for optimized JPG transfers through NGO.")]
     [SerializeField] private int maxFullImageBytes = 5 * 1024 * 1024;
+
+    [Tooltip("Hard cap for small video transfers through NGO. Keep conservative, especially when Unity Relay is active.")]
+    [SerializeField] private int maxFullVideoBytes = 64 * 1024 * 1024;
 
     [SerializeField] private int maxThumbnailBytes = 64 * 1024;
 
@@ -81,18 +84,18 @@ public class M_MediaTransferManager : NetworkBehaviour
             _pendingClientSharesBySha[sha] = entry;
     }
 
-    public void SendLocalMediaToHost(SharedMediaEntry entry, string thumbnailPath, string fullImagePath)
+    public void SendLocalMediaToHost(SharedMediaEntry entry, string thumbnailPath, string fullMediaPath)
     {
         if (!IsClient || IsServer)
             return;
 
         List<ulong> target = new List<ulong> { NetworkManager.ServerClientId };
         EnqueueFile(entry, thumbnailPath, M_MediaTransferFileRole.Thumbnail, target);
-        EnqueueFile(entry, fullImagePath, M_MediaTransferFileRole.FullImage, target);
-        ReportTransferStatus("Sharing photo with host...");
+        EnqueueFile(entry, fullMediaPath, M_MediaTransferFileRole.FullMedia, target);
+        ReportTransferStatus($"Sharing {M_MediaTypeUtility.DisplayNoun(entry.Kind.ToString())} with host...");
     }
 
-    public void SendHostMediaToClients(SharedMediaEntry entry, string thumbnailPath, string fullImagePath, ulong excludedClientId = ulong.MaxValue)
+    public void SendHostMediaToClients(SharedMediaEntry entry, string thumbnailPath, string fullMediaPath, ulong excludedClientId = ulong.MaxValue)
     {
         if (!IsServer)
             return;
@@ -107,7 +110,7 @@ public class M_MediaTransferManager : NetworkBehaviour
         if (EnqueueFile(entry, thumbnailPath, M_MediaTransferFileRole.Thumbnail, targets))
             catalog?.SetStateServer(entry.Sequence, MediaShareState.ThumbnailReady);
 
-        if (EnqueueFile(entry, fullImagePath, M_MediaTransferFileRole.FullImage, targets))
+        if (EnqueueFile(entry, fullMediaPath, M_MediaTransferFileRole.FullMedia, targets))
             catalog?.SetStateServer(entry.Sequence, MediaShareState.Ready);
     }
 
@@ -140,7 +143,8 @@ public class M_MediaTransferManager : NetworkBehaviour
         };
 
         SendProtocolMessage(header, null, new List<ulong> { NetworkManager.ServerClientId });
-        ReportTransferStatus(role == M_MediaTransferFileRole.Thumbnail ? "Requesting shared photo thumbnail..." : "Requesting shared photo...");
+        string noun = M_MediaTypeUtility.DisplayNoun(entry.Kind.ToString());
+        ReportTransferStatus(role == M_MediaTransferFileRole.Thumbnail ? $"Requesting shared {noun} thumbnail..." : $"Requesting shared {noun}...");
     }
 
     public void SendProtocolMessage(M_MediaTransferHeader header, byte[] payload, IReadOnlyList<ulong> targetClientIds)
@@ -157,7 +161,7 @@ public class M_MediaTransferManager : NetworkBehaviour
             writer.WriteBytesSafe(payload, payloadLength);
 
         // ReliableFragmentedSequenced is available in NGO 2.8. We still keep chunks small because Relay and NGO are not a
-        // production bulk media pipeline; this path is a conservative fallback for optimized JPGs.
+        // production bulk media pipeline; this path is a conservative fallback for bounded media files.
         NetworkManager.CustomMessagingManager.SendNamedMessage(
             M_MediaTransferProtocolUtility.NamedMessage,
             targetClientIds,
@@ -191,7 +195,7 @@ public class M_MediaTransferManager : NetworkBehaviour
         }
 
         long length = new FileInfo(path).Length;
-        int limit = role == M_MediaTransferFileRole.Thumbnail ? maxThumbnailBytes : maxFullImageBytes;
+        int limit = GetLimitFor(entry, role);
         if (length > limit)
         {
             ReportTransferStatus($"{role} is too large to send through the NGO fallback.");
@@ -270,7 +274,7 @@ public class M_MediaTransferManager : NetworkBehaviour
         string path = ResolveHostPathForRequest(entry, request.Role);
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            ReportTransferStatus("Host cache did not contain the requested shared photo.");
+            ReportTransferStatus("Host cache did not contain the requested shared media.");
             return;
         }
 
@@ -280,7 +284,7 @@ public class M_MediaTransferManager : NetworkBehaviour
     private string ResolveHostPathForRequest(SharedMediaEntry entry, M_MediaTransferFileRole role)
     {
         string identitySha = entry.Sha256.ToString();
-        if (sessionCache != null && sessionCache.TryGetCachedPath(identitySha, role, preferHostCache: true, out string cachePath))
+        if (sessionCache != null && sessionCache.TryGetCachedPath(identitySha, role, true, out string cachePath, entry.Mime.ToString()))
             return cachePath;
 
         // Fallback for the host's own local gallery if setup code forgot to pre-copy into host_cache.
@@ -316,15 +320,15 @@ public class M_MediaTransferManager : NetworkBehaviour
             else
             {
                 catalog?.SetStateServer(entry.Sequence, MediaShareState.Ready);
-                EnqueueFile(entry, file.LocalPath, M_MediaTransferFileRole.FullImage, BuildClientTargets(file.SenderClientId));
+                EnqueueFile(entry, file.LocalPath, M_MediaTransferFileRole.FullMedia, BuildClientTargets(file.SenderClientId));
                 _pendingClientSharesBySha.Remove(file.IdentitySha256);
-                ReportTransferStatus("Photo received and verified by host.");
+                ReportTransferStatus("Media received and verified by host.");
             }
         }
         else
         {
             FileReceived?.Invoke(file);
-            ReportTransferStatus(file.Role == M_MediaTransferFileRole.Thumbnail ? "Thumbnail ready." : "Shared photo ready.");
+            ReportTransferStatus(file.Role == M_MediaTransferFileRole.Thumbnail ? "Thumbnail ready." : "Shared media ready.");
         }
     }
 
@@ -348,16 +352,16 @@ public class M_MediaTransferManager : NetworkBehaviour
         string identitySha = entry.Sha256.ToString();
         if (entry.State >= MediaShareState.ThumbnailReady
             && sessionCache != null
-            && !sessionCache.HasVerifiedFile(identitySha, M_MediaTransferFileRole.Thumbnail, hostCache: false))
+            && !sessionCache.HasVerifiedFile(identitySha, M_MediaTransferFileRole.Thumbnail, false, null, entry.Mime.ToString()))
         {
             RequestMediaFromHost(entry, M_MediaTransferFileRole.Thumbnail);
         }
 
         if (entry.State == MediaShareState.Ready
             && sessionCache != null
-            && !sessionCache.HasVerifiedFile(identitySha, M_MediaTransferFileRole.FullImage, hostCache: false, expectedSha256: identitySha))
+            && !sessionCache.HasVerifiedFile(identitySha, M_MediaTransferFileRole.FullMedia, false, identitySha, entry.Mime.ToString()))
         {
-            RequestMediaFromHost(entry, M_MediaTransferFileRole.FullImage);
+            RequestMediaFromHost(entry, M_MediaTransferFileRole.FullMedia);
         }
     }
 
@@ -424,11 +428,19 @@ public class M_MediaTransferManager : NetworkBehaviour
 
         if (_receiver == null && sessionCache != null && scheduler != null)
         {
-            _receiver = new M_MediaTransferReceiver(sessionCache, scheduler.ChunkPayloadBytes, maxFullImageBytes, maxThumbnailBytes);
+            _receiver = new M_MediaTransferReceiver(sessionCache, scheduler.ChunkPayloadBytes, maxFullImageBytes, maxFullVideoBytes, maxThumbnailBytes);
             _receiver.FileCompleted += HandleReceiverCompleted;
             _receiver.ProgressChanged += HandleReceiverProgress;
             _receiver.TransferFailed += HandleReceiverFailed;
         }
+    }
+
+    private int GetLimitFor(SharedMediaEntry entry, M_MediaTransferFileRole role)
+    {
+        if (role == M_MediaTransferFileRole.Thumbnail)
+            return maxThumbnailBytes;
+
+        return M_MediaTypeUtility.IsVideoMime(entry.Mime.ToString()) ? maxFullVideoBytes : maxFullImageBytes;
     }
 
     private void ResolveReferences()

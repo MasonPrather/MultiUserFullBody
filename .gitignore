@@ -147,13 +147,17 @@ StyleCopReport.xml
 *_h.h
 *.ilk
 *.meta
+!Assets/Audio.meta
+!Assets/Audio/*.mp3.meta
 !Assets/_Prefabs/MediaUploadSetup.prefab.meta
 !Assets/_Prefabs/MediaTile.prefab.meta
 !Assets/_Scenes/EyeFaceTrackingScene_MediaUpload.unity.meta
 !Assets/_Scenes/EyeFaceTrackingScene_PhoneMirroring.unity.meta
 !Assets/_Scenes/MediaUpload.unity.meta
 !Assets/_Scenes/PhonePhotoUpload.unity.meta
+!Assets/_Scripts/Media/UI/M_SharedMediaVideoAudio.cs.meta
 !Assets/_Scripts/MediaUpload/ImagePicker.cs.meta
+!Assets/_Scripts/MediaUpload/M_LocalMediaNotificationAudio.cs.meta
 !Assets/_Scripts/MediaUpload/M_NetworkedPhotoSync.cs.meta
 !Assets/_Scripts/MediaUpload/M_PassthroughHandVisualController.cs.meta
 !Assets/_Scripts/MediaUpload/M_PassthroughModeController.cs.meta

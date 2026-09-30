@@ -101,4 +101,64 @@ public static class M_MediaThumbnailGenerator
             Object.Destroy(resized);
         }
     }
+
+    public static byte[] EncodeVideoPlaceholderJpg(int edge, int quality, out int width, out int height)
+    {
+        int size = Mathf.Clamp(edge, 64, 1024);
+        width = size;
+        height = size;
+
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        try
+        {
+            Color32 backgroundTop = new Color32(27, 38, 59, 255);
+            Color32 backgroundBottom = new Color32(8, 13, 22, 255);
+            Color32 panel = new Color32(15, 23, 42, 255);
+            Color32 accent = new Color32(248, 250, 252, 255);
+
+            for (int y = 0; y < size; y++)
+            {
+                float t = y / (float)Mathf.Max(1, size - 1);
+                Color32 row = Color32.Lerp(backgroundBottom, backgroundTop, t);
+                for (int x = 0; x < size; x++)
+                    texture.SetPixel(x, y, row);
+            }
+
+            int margin = Mathf.RoundToInt(size * 0.16f);
+            for (int y = margin; y < size - margin; y++)
+            {
+                for (int x = margin; x < size - margin; x++)
+                    texture.SetPixel(x, y, panel);
+            }
+
+            DrawPlayTriangle(texture, accent);
+            texture.Apply(false, false);
+            return ImageConversion.EncodeToJPG(texture, Mathf.Clamp(quality, 1, 100));
+        }
+        finally
+        {
+            Object.Destroy(texture);
+        }
+    }
+
+    private static void DrawPlayTriangle(Texture2D texture, Color32 color)
+    {
+        int size = texture.width;
+        int left = Mathf.RoundToInt(size * 0.39f);
+        int right = Mathf.RoundToInt(size * 0.68f);
+        int top = Mathf.RoundToInt(size * 0.32f);
+        int bottom = Mathf.RoundToInt(size * 0.68f);
+        int centerY = size / 2;
+
+        for (int x = left; x <= right; x++)
+        {
+            float normalized = (x - left) / (float)Mathf.Max(1, right - left);
+            int halfHeight = Mathf.RoundToInt((bottom - top) * 0.5f * normalized);
+            for (int y = centerY - halfHeight; y <= centerY + halfHeight; y++)
+            {
+                if (x >= 0 && x < size && y >= 0 && y < size)
+                    texture.SetPixel(x, y, color);
+            }
+        }
+    }
 }

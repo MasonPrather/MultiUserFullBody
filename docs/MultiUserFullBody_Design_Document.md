@@ -544,7 +544,7 @@ Caption: The remote avatar design separated owner tracking from remote presentat
 - `docs/SCRIPT_REFERENCE.md`: script reference organized by subsystem.
 - `docs/SETUP_AND_USAGE.md`: setup, run workflows, startup order, and demonstration notes.
 - `docs/TROUBLESHOOTING.md`: startup, network, dependency, and runtime diagnostics.
-- `Assets/FromCompanion/PHONE_UPLOAD.md`: focused notes for the current phone photo upload flow.
+- `Assets/FromCompanion/PHONE_UPLOAD.md`: focused notes for the current phone media upload flow.
 
 ## 13. Known Limitations and Maintenance Guidance
 

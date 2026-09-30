@@ -1,8 +1,8 @@
 /*
  * Script Name: M_SimpleHTTPServer.cs
  * Author: Mason Prather
- * Description: Implements the local phone-upload HTTP server, serves the browser upload page, validates pairing codes when required, accepts raw or multipart image uploads, and writes files to persistent storage.
- * Project Role: Quest-hosted no-install upload endpoint for phone photo sharing.
+ * Description: Implements the local phone-upload HTTP server, serves the browser upload page, validates pairing codes when required, accepts raw or multipart media uploads, and writes files to persistent storage.
+ * Project Role: Quest-hosted no-install upload endpoint for phone media sharing.
  * Key Inputs: TCP HTTP requests for /, /ping, and /upload-photo; pairing code query/form values; raw or multipart image bytes.
  * Key Outputs: Saved upload files, LastSavedPhotoPath updates, JSON/HTML HTTP responses, and server logs.
  */
@@ -18,10 +18,10 @@ using System.Threading;
 using UnityEngine;
 
 /// <summary>
-/// Minimal local HTTP server for phone-to-Quest photo upload.
+/// Minimal local HTTP server for phone-to-Quest media upload.
 /// - GET / -> phone-friendly upload page.
 /// - GET /ping -> {"status":"pong"}.
-/// - POST /upload-photo -> accepts raw image bytes or multipart form uploads.
+/// - POST /upload-photo -> accepts raw image bytes or multipart media uploads.
 /// Uploaded files are saved under the configured upload root and exposed through LastSavedPhotoPath.
 /// </summary>
 public class M_SimpleHttpServer
@@ -315,7 +315,7 @@ public class M_SimpleHttpServer
             if (file == null || file.Data == null || file.Data.Length == 0)
                 continue;
 
-            string saved = SavePhoto(file.Data, file.FileName, file.ContentType);
+            string saved = SaveUploadedMedia(file.Data, file.FileName, file.ContentType);
             if (string.IsNullOrEmpty(saved))
                 continue;
 
@@ -570,14 +570,14 @@ public class M_SimpleHttpServer
         return body;
     }
 
-    private string SavePhoto(byte[] data, string originalFileName, string contentType)
+    private string SaveUploadedMedia(byte[] data, string originalFileName, string contentType)
     {
         try
         {
-            string extension = ResolveImageExtension(data, originalFileName, contentType);
+            string extension = ResolveMediaExtension(data, originalFileName, contentType);
             string baseName = Path.GetFileNameWithoutExtension(SanitizeFileName(originalFileName));
             if (string.IsNullOrWhiteSpace(baseName))
-                baseName = "phone_photo";
+                baseName = "phone_media";
 
             string fileName = $"{baseName}_{DateTime.UtcNow:yyyyMMdd_HHmmssfff}{extension}";
             string fullPath = Path.Combine(_uploadRoot, fileName);
@@ -585,17 +585,17 @@ public class M_SimpleHttpServer
             File.WriteAllBytes(fullPath, data);
             LastSavedPhotoPath = fullPath;
 
-            Debug.Log($"[M_SimpleHttpServer] Saved photo: {fullPath} (bytes={data.Length}, contentType={contentType ?? "unknown"})");
+            Debug.Log($"[M_SimpleHttpServer] Saved media: {fullPath} (bytes={data.Length}, contentType={contentType ?? "unknown"})");
             return fullPath;
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[M_SimpleHttpServer] SavePhoto failed: {ex}");
+            Debug.LogError($"[M_SimpleHttpServer] SaveUploadedMedia failed: {ex}");
             return null;
         }
     }
 
-    private static string ResolveImageExtension(byte[] data, string originalFileName, string contentType)
+    private static string ResolveMediaExtension(byte[] data, string originalFileName, string contentType)
     {
         if (IsJpeg(data))
             return ".jpg";
@@ -606,6 +606,18 @@ public class M_SimpleHttpServer
         if (IsWebP(data))
             return ".webp";
 
+        if (IsIsoBaseMediaFile(data))
+        {
+            string originalExt = Path.GetExtension(originalFileName)?.ToLowerInvariant();
+            if (originalExt == ".mov" || originalExt == ".m4v" || originalExt == ".mp4")
+                return originalExt;
+
+            return ".mp4";
+        }
+
+        if (IsWebM(data))
+            return ".webm";
+
         string ext = Path.GetExtension(originalFileName);
         if (!string.IsNullOrWhiteSpace(ext))
         {
@@ -613,7 +625,8 @@ public class M_SimpleHttpServer
             if (ext == ".jpeg")
                 return ".jpg";
 
-            if (ext == ".jpg" || ext == ".png" || ext == ".webp" || ext == ".gif" || ext == ".heic" || ext == ".heif")
+            if (ext == ".jpg" || ext == ".png" || ext == ".webp" || ext == ".gif" || ext == ".heic" || ext == ".heif"
+                || ext == ".mp4" || ext == ".mov" || ext == ".m4v" || ext == ".webm")
                 return ext;
         }
 
@@ -627,6 +640,19 @@ public class M_SimpleHttpServer
 
             if (contentType.IndexOf("heic", StringComparison.OrdinalIgnoreCase) >= 0)
                 return ".heic";
+
+            if (contentType.IndexOf("quicktime", StringComparison.OrdinalIgnoreCase) >= 0)
+                return ".mov";
+
+            if (contentType.IndexOf("m4v", StringComparison.OrdinalIgnoreCase) >= 0)
+                return ".m4v";
+
+            if (contentType.IndexOf("webm", StringComparison.OrdinalIgnoreCase) >= 0)
+                return ".webm";
+
+            if (contentType.IndexOf("video", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                contentType.IndexOf("mp4", StringComparison.OrdinalIgnoreCase) >= 0)
+                return ".mp4";
         }
 
         return ".jpg";
@@ -651,6 +677,18 @@ public class M_SimpleHttpServer
                data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50;
     }
 
+    private static bool IsIsoBaseMediaFile(byte[] data)
+    {
+        return data != null && data.Length >= 12 &&
+               data[4] == 0x66 && data[5] == 0x74 && data[6] == 0x79 && data[7] == 0x70;
+    }
+
+    private static bool IsWebM(byte[] data)
+    {
+        return data != null && data.Length >= 4 &&
+               data[0] == 0x1A && data[1] == 0x45 && data[2] == 0xDF && data[3] == 0xA3;
+    }
+
     private static string GetUploadedFileName(Dictionary<string, string> headers, Dictionary<string, string> query)
     {
         string value = GetHeader(headers, "X-File-Name");
@@ -660,20 +698,20 @@ public class M_SimpleHttpServer
         if (query != null && query.TryGetValue("filename", out value) && !string.IsNullOrWhiteSpace(value))
             return value;
 
-        return "phone_photo.jpg";
+        return "phone_media";
     }
 
     private static string SanitizeFileName(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return "phone_photo";
+            return "phone_media";
 
         string safe = Path.GetFileName(value.Trim());
         char[] invalid = Path.GetInvalidFileNameChars();
         for (int i = 0; i < invalid.Length; i++)
             safe = safe.Replace(invalid[i], '_');
 
-        return string.IsNullOrWhiteSpace(safe) ? "phone_photo" : safe;
+        return string.IsNullOrWhiteSpace(safe) ? "phone_media" : safe;
     }
 
     private static Dictionary<string, string> ParseHeaders(string[] lines)
@@ -850,7 +888,7 @@ public class M_SimpleHttpServer
 <head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>Photo Upload</title>
+<title>Media Upload</title>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f7f4;color:#161616}
 main{max-width:560px;margin:0 auto;padding:28px 20px 40px}
@@ -867,13 +905,13 @@ button:disabled{background:#9aa9bd}
 </head>
 <body>
 <main>
-<h1>Add photos</h1>
-<p>Choose photos from this phone. They will appear in the headset after upload.</p>
+<h1>Add media</h1>
+<p>Choose photos or videos from this phone. They will appear in the headset after upload.</p>
 <label for='code'>Code from headset</label>
 <input id='code' inputmode='numeric' autocomplete='one-time-code' placeholder='Enter code'>
-<label for='photos'>Photos</label>
-<input id='photos' type='file' accept='image/*' multiple>
-<button id='upload'>Upload photos</button>
+<label for='photos'>Photos or videos</label>
+<input id='photos' type='file' accept='image/*,video/mp4,video/quicktime,video/x-m4v,video/webm,video/*' multiple>
+<button id='upload'>Upload media</button>
 <div id='status' class='status'>Ready.</div>
 <div class='hint'>Phone and headset must be on the same Wi-Fi network.</div>
 </main>
@@ -888,7 +926,7 @@ const statusBox = document.getElementById('status');
 const params = new URLSearchParams(location.search);
 if (params.get('code')) code.value = params.get('code');
 function setStatus(text){ statusBox.textContent = text; }
-function safeName(name){ return (name || 'phone-photo').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]+/gi, '_') + '.jpg'; }
+function safeName(name){ return (name || 'phone-media').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]+/gi, '_') + '.jpg'; }
 function imageToJpeg(file){
   return new Promise((resolve,reject)=>{
     const url = URL.createObjectURL(file);
@@ -933,19 +971,24 @@ async function uploadFallback(file){
 button.addEventListener('click', async () => {
   const selected = Array.from(photos.files || []);
   if (requiresCode && !code.value.trim()) { setStatus('Enter the code from the headset.'); return; }
-  if (!selected.length) { setStatus('Choose at least one photo.'); return; }
+  if (!selected.length) { setStatus('Choose at least one photo or video.'); return; }
   button.disabled = true;
   let uploaded = 0;
   try {
     for (const file of selected) {
       setStatus('Preparing ' + file.name + '...');
-      try {
-        const jpeg = await imageToJpeg(file);
-        setStatus('Uploading ' + file.name + '...');
-        await uploadBlob(jpeg, safeName(file.name));
-      } catch (e) {
-        setStatus('Uploading original ' + file.name + '...');
+      if (!file.type.startsWith('image/')) {
+        setStatus('Uploading video ' + file.name + '...');
         await uploadFallback(file);
+      } else {
+        try {
+          const jpeg = await imageToJpeg(file);
+          setStatus('Uploading ' + file.name + '...');
+          await uploadBlob(jpeg, safeName(file.name));
+        } catch (e) {
+          setStatus('Uploading original ' + file.name + '...');
+          await uploadFallback(file);
+        }
       }
       uploaded++;
       setStatus('Uploaded ' + uploaded + ' of ' + selected.length + '.');

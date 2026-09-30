@@ -35,6 +35,29 @@ public class M_QuestUserMenu : MonoBehaviour
     public M_ServerBootstrap serverBootstrap;
     public M_PhoneImportHeadsetMode phoneImportMode;
     public XRMultiplayer.CharacterResetter characterResetter;
+    public XRMultiplayer.PlayerOptions pauseMenuOptions;
+
+    [Header("Pause Menu Docking")]
+    [Tooltip("After the launch prompt is dismissed, show this phone pairing UI beside the XR Multiplayer Template pause menu instead of as a separate summoned menu.")]
+    public bool attachToPauseMenuAfterDismissal = true;
+
+    [Tooltip("Template pause/menu transform used as the side-by-side anchor. If empty, the PlayerOptions menu is found at runtime, including inactive menu objects.")]
+    public Transform pauseMenuRoot;
+
+    [Tooltip("Fallback scene object name used when a PlayerOptions component cannot be found.")]
+    public string pauseMenuRootName = "Player_Menu_UI";
+
+    [Tooltip("Suppress this component's own menu-button handling once the phone UI has been dismissed into the template pause menu.")]
+    public bool pauseMenuOwnsToggleAfterDismissal = true;
+
+    [Tooltip("Meters to the right of the pause menu where the phone pairing panel appears.")]
+    public float dockedHorizontalOffsetMeters = 0.86f;
+
+    [Tooltip("Meters above the pause menu where the phone pairing panel appears.")]
+    public float dockedVerticalOffsetMeters = 0f;
+
+    [Tooltip("Meters forward from the pause menu where the phone pairing panel appears.")]
+    public float dockedDepthOffsetMeters = 0f;
 
     [Header("Generated Menu")]
     public GameObject menuRoot;
@@ -70,6 +93,10 @@ public class M_QuestUserMenu : MonoBehaviour
 
     private bool _isMenuVisible;
     private bool _createdMenu;
+    private bool _dismissedToPauseMenu;
+    private bool _hiddenForCurrentPauseSession;
+    private bool _pauseMenuWasVisible;
+    private float _nextPauseMenuResolveTime;
     private float _nextRefreshTime;
     private M_PassthroughModeController _subscribedPassthroughController;
     private M_ServerBootstrap _subscribedServerBootstrap;
@@ -103,6 +130,8 @@ public class M_QuestUserMenu : MonoBehaviour
         if (ShouldToggleMenu())
             ToggleMenu();
 
+        SyncWithPauseMenuDock();
+
         if (!_isMenuVisible || Time.unscaledTime < _nextRefreshTime)
             return;
 
@@ -127,7 +156,13 @@ public class M_QuestUserMenu : MonoBehaviour
 
     public void ToggleMenu()
     {
-        SetMenuVisible(!_isMenuVisible);
+        if (IsPauseMenuDockingActive())
+            return;
+
+        if (_isMenuVisible)
+            DismissMenu(hideForCurrentPauseSession: false);
+        else
+            SetMenuVisible(true);
     }
 
     public void OpenMenu()
@@ -137,6 +172,25 @@ public class M_QuestUserMenu : MonoBehaviour
 
     public void CloseMenu()
     {
+        DismissMenu(hideForCurrentPauseSession: true);
+    }
+
+    public void DismissMenu()
+    {
+        DismissMenu(hideForCurrentPauseSession: true);
+    }
+
+    private void DismissMenu(bool hideForCurrentPauseSession)
+    {
+        if (attachToPauseMenuAfterDismissal)
+        {
+            ResolvePauseMenuReferences(force: true);
+            bool pauseVisible = IsPauseMenuVisible();
+            _dismissedToPauseMenu = true;
+            _hiddenForCurrentPauseSession = hideForCurrentPauseSession && pauseVisible;
+            _pauseMenuWasVisible = pauseVisible;
+        }
+
         SetMenuVisible(false);
     }
 
@@ -168,7 +222,15 @@ public class M_QuestUserMenu : MonoBehaviour
             SetStatus("Menu recentered.");
         }
 
-        PlaceMenuInFrontOfUser();
+        if (IsPauseMenuDockingActive() && IsPauseMenuVisible())
+        {
+            PlaceMenuBesidePauseMenu();
+            SetStatus("Menu tethered to pause menu.");
+        }
+        else
+        {
+            PlaceMenuInFrontOfUser();
+        }
     }
 
     public void SetMenuVisible(bool visible)
@@ -182,7 +244,20 @@ public class M_QuestUserMenu : MonoBehaviour
 
         if (visible)
         {
-            PlaceMenuInFrontOfUser();
+            if (IsPauseMenuDockingActive() && !IsPauseMenuVisible())
+            {
+                _isMenuVisible = false;
+                if (menuRoot != null)
+                    menuRoot.SetActive(false);
+
+                return;
+            }
+
+            if (IsPauseMenuDockingActive() && PlaceMenuBesidePauseMenu())
+                _hiddenForCurrentPauseSession = false;
+            else
+                PlaceMenuInFrontOfUser();
+
             RefreshMenuText();
             _nextRefreshTime = Time.unscaledTime + Mathf.Max(0.1f, visibleRefreshIntervalSeconds);
         }
@@ -193,6 +268,9 @@ public class M_QuestUserMenu : MonoBehaviour
 
     private bool ShouldToggleMenu()
     {
+        if (pauseMenuOwnsToggleAfterDismissal && IsPauseMenuDockingActive())
+            return false;
+
         bool editorToggle = IsEditorTogglePressedThisFrame();
         bool primaryToggle = menuToggleButton != OVRInput.Button.None && OVRInput.GetDown(menuToggleButton);
         bool secondaryToggle = enableSecondaryToggleButton &&
@@ -267,6 +345,125 @@ public class M_QuestUserMenu : MonoBehaviour
 
         if (characterResetter == null)
             characterResetter = UnityEngine.Object.FindObjectOfType<XRMultiplayer.CharacterResetter>();
+
+        ResolvePauseMenuReferences();
+    }
+
+    private bool IsPauseMenuDockingActive()
+    {
+        return attachToPauseMenuAfterDismissal && _dismissedToPauseMenu;
+    }
+
+    private void SyncWithPauseMenuDock()
+    {
+        if (!IsPauseMenuDockingActive())
+            return;
+
+        ResolvePauseMenuReferences();
+
+        bool pauseVisible = IsPauseMenuVisible();
+        if (pauseVisible != _pauseMenuWasVisible)
+        {
+            _pauseMenuWasVisible = pauseVisible;
+
+            if (pauseVisible)
+                _hiddenForCurrentPauseSession = false;
+        }
+
+        if (!pauseVisible || _hiddenForCurrentPauseSession)
+        {
+            if (_isMenuVisible || (menuRoot != null && menuRoot.activeSelf))
+                SetMenuVisible(false);
+
+            return;
+        }
+
+        EnsureMenu();
+        if (menuRoot == null)
+            return;
+
+        PlaceMenuBesidePauseMenu();
+
+        if (!_isMenuVisible || !menuRoot.activeSelf)
+        {
+            _isMenuVisible = true;
+            menuRoot.SetActive(true);
+            RefreshMenuText();
+            _nextRefreshTime = Time.unscaledTime + Mathf.Max(0.1f, visibleRefreshIntervalSeconds);
+        }
+    }
+
+    private bool IsPauseMenuVisible()
+    {
+        ResolvePauseMenuReferences();
+        return pauseMenuRoot != null && pauseMenuRoot.gameObject.activeInHierarchy;
+    }
+
+    private void ResolvePauseMenuReferences(bool force = false)
+    {
+        if (!force && Time.unscaledTime < _nextPauseMenuResolveTime)
+            return;
+
+        _nextPauseMenuResolveTime = Time.unscaledTime + 1f;
+
+        if (pauseMenuRoot != null && IsSceneObject(pauseMenuRoot.gameObject))
+        {
+            if (pauseMenuOptions == null)
+                pauseMenuOptions = pauseMenuRoot.GetComponent<XRMultiplayer.PlayerOptions>();
+
+            return;
+        }
+
+        if (pauseMenuOptions == null || !IsSceneObject(pauseMenuOptions.gameObject))
+            pauseMenuOptions = FindScenePauseMenuOptions();
+
+        if (pauseMenuOptions != null)
+        {
+            pauseMenuRoot = pauseMenuOptions.transform;
+            return;
+        }
+
+        pauseMenuRoot = FindSceneTransformByName(pauseMenuRootName);
+    }
+
+    private static XRMultiplayer.PlayerOptions FindScenePauseMenuOptions()
+    {
+        XRMultiplayer.PlayerOptions[] options = Resources.FindObjectsOfTypeAll<XRMultiplayer.PlayerOptions>();
+        for (int i = 0; i < options.Length; i++)
+        {
+            XRMultiplayer.PlayerOptions option = options[i];
+            if (option != null && IsSceneObject(option.gameObject))
+                return option;
+        }
+
+        return null;
+    }
+
+    private static Transform FindSceneTransformByName(string objectName)
+    {
+        if (string.IsNullOrWhiteSpace(objectName))
+            return null;
+
+        Transform[] transforms = Resources.FindObjectsOfTypeAll<Transform>();
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform candidate = transforms[i];
+            if (candidate != null &&
+                candidate.name == objectName &&
+                IsSceneObject(candidate.gameObject))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsSceneObject(GameObject gameObject)
+    {
+        return gameObject != null &&
+               gameObject.scene.IsValid() &&
+               !gameObject.hideFlags.HasFlag(HideFlags.HideAndDontSave);
     }
 
     private void EnsureMenu()
@@ -619,6 +816,25 @@ public class M_QuestUserMenu : MonoBehaviour
 
         menuRoot.transform.position = position;
         menuRoot.transform.rotation = Quaternion.LookRotation(position - xrCamera.transform.position, Vector3.up);
+    }
+
+    private bool PlaceMenuBesidePauseMenu()
+    {
+        if (menuRoot == null)
+            return false;
+
+        ResolvePauseMenuReferences(force: pauseMenuRoot == null);
+        if (pauseMenuRoot == null)
+            return false;
+
+        Vector3 position = pauseMenuRoot.position +
+                           pauseMenuRoot.right * dockedHorizontalOffsetMeters +
+                           pauseMenuRoot.up * dockedVerticalOffsetMeters +
+                           pauseMenuRoot.forward * dockedDepthOffsetMeters;
+
+        menuRoot.transform.position = position;
+        menuRoot.transform.rotation = pauseMenuRoot.rotation;
+        return true;
     }
 
     private void ConfigureCanvasForXRInput(Canvas canvas)

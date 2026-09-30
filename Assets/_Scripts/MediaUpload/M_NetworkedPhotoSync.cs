@@ -1,14 +1,15 @@
 /*
  * Script Name: M_NetworkedPhotoSync.cs
  * Author: Mason Prather
- * Description: Bridges local image selections and phone uploads into XRINetworkPlayer shared-media synchronization so connected clients display the same photo.
+ * Description: Bridges local media selections and phone uploads into XRINetworkPlayer shared-media synchronization so connected clients display the same media.
  * Project Role: Shared media relay between the local gallery/display layer and the multiplayer avatar/network layer.
- * Key Inputs: Prepared image payloads, selected gallery items, loaded Texture2D instances, and XRINetworkPlayer shared-media callbacks.
- * Key Outputs: Local photo display updates, JPEG-encoded network payloads, and remote shared-media display updates.
+ * Key Inputs: Prepared image/video payloads, selected gallery items, loaded Texture2D instances, and XRINetworkPlayer shared-media callbacks.
+ * Key Outputs: Local media display updates, JPEG/video network payloads, and remote shared-media display updates.
  */
 
 using System;
 using System.Collections;
+using System.IO;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -17,12 +18,13 @@ using XRMultiplayer;
 /// <summary>
 /// Bridges local media imports and phone uploads with the active multiplayer player object.
 /// Local uploads are displayed immediately, then forwarded through XRINetworkPlayer so
-/// every connected client applies the same image to their own shared photo panel.
+/// every connected client applies the same media to their own shared media panel.
 /// </summary>
 public class M_NetworkedPhotoSync : MonoBehaviour
 {
     [SerializeField] private M_QuestPhotoDisplay photoDisplay;
     [SerializeField, Range(1, 100)] private int jpegQuality = 75;
+    [SerializeField] private int maxSharedVideoBytes = 64 * 1024 * 1024;
     [SerializeField] private float localPlayerLookupTimeout = 3f;
     [SerializeField] private float duplicateBroadcastWindowSeconds = 2f;
     [SerializeField] private bool verboseLogging = true;
@@ -139,8 +141,8 @@ public class M_NetworkedPhotoSync : MonoBehaviour
 
     private void OnEnable()
     {
-        XRINetworkPlayer.onSharedMediaReceived -= HandleSharedMediaReceived;
-        XRINetworkPlayer.onSharedMediaReceived += HandleSharedMediaReceived;
+        XRINetworkPlayer.onSharedMediaPayloadReceived -= HandleSharedMediaReceived;
+        XRINetworkPlayer.onSharedMediaPayloadReceived += HandleSharedMediaReceived;
         XRINetworkPlayer.onLocalPlayerSpawned -= HandleLocalPlayerSpawned;
         XRINetworkPlayer.onLocalPlayerSpawned += HandleLocalPlayerSpawned;
 
@@ -150,7 +152,7 @@ public class M_NetworkedPhotoSync : MonoBehaviour
 
     private void OnDisable()
     {
-        XRINetworkPlayer.onSharedMediaReceived -= HandleSharedMediaReceived;
+        XRINetworkPlayer.onSharedMediaPayloadReceived -= HandleSharedMediaReceived;
         XRINetworkPlayer.onLocalPlayerSpawned -= HandleLocalPlayerSpawned;
     }
 
@@ -167,7 +169,7 @@ public class M_NetworkedPhotoSync : MonoBehaviour
             return;
         }
 
-        BroadcastImageBytes(image.fileName, image.bytes);
+        BroadcastImageBytes(image.fileName, image.bytes, image.mimeType);
     }
 
     public void BroadcastTexture(Texture2D texture, string fileName)
@@ -177,7 +179,22 @@ public class M_NetworkedPhotoSync : MonoBehaviour
 
     public void BroadcastImageBytes(string fileName, byte[] encodedBytes)
     {
-        StartCoroutine(BroadcastImageBytesCoroutine(fileName, encodedBytes));
+        BroadcastImageBytes(fileName, encodedBytes, null);
+    }
+
+    public void BroadcastImageBytes(string fileName, byte[] encodedBytes, string mime)
+    {
+        StartCoroutine(BroadcastMediaBytesCoroutine(fileName, encodedBytes, M_MediaTypeUtility.KindImage, mime));
+    }
+
+    public void BroadcastVideoFile(string videoPath, string fileName = null)
+    {
+        BroadcastMediaFile(videoPath, fileName, M_MediaTypeUtility.KindVideo, null);
+    }
+
+    public void BroadcastMediaFile(string path, string fileName = null, string kind = null, string mime = null)
+    {
+        StartCoroutine(BroadcastMediaFileCoroutine(path, fileName, kind, mime));
     }
 
     private XRINetworkPlayer ResolveLocalPlayer()
@@ -239,7 +256,7 @@ public class M_NetworkedPhotoSync : MonoBehaviour
             yield break;
         }
 
-        yield return BroadcastImageBytesCoroutine(item.fileName, encodedBytes);
+        yield return BroadcastMediaBytesCoroutine(item.fileName, encodedBytes, M_MediaTypeUtility.KindImage, "image/jpeg");
 
         if (!displayOwnsTexture)
             Destroy(localTexture);
@@ -264,19 +281,67 @@ public class M_NetworkedPhotoSync : MonoBehaviour
             Debug.LogWarning($"[M_NetworkedPhotoSync] Failed to encode texture '{fileName}' for synchronization: {ex.Message}");
         }
 
-        yield return BroadcastImageBytesCoroutine(fileName, encodedBytes);
+        yield return BroadcastMediaBytesCoroutine(fileName, encodedBytes, M_MediaTypeUtility.KindImage, "image/jpeg");
     }
 
-    private IEnumerator BroadcastImageBytesCoroutine(string fileName, byte[] encodedBytes)
+    private IEnumerator BroadcastMediaFileCoroutine(string path, string fileName, string kind, string mime)
     {
-        if (encodedBytes == null || encodedBytes.Length == 0)
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            Debug.LogWarning("[M_NetworkedPhotoSync] BroadcastImageBytes ignored an empty payload.");
+            Debug.LogWarning($"[M_NetworkedPhotoSync] BroadcastMediaFile ignored missing file '{path}'.");
             yield break;
         }
 
-        string safeFileName = string.IsNullOrWhiteSpace(fileName) ? "Uploaded photo" : fileName;
-        if (IsDuplicateRecentBroadcast(safeFileName, encodedBytes))
+        string safeFileName = string.IsNullOrWhiteSpace(fileName) ? Path.GetFileName(path) : fileName;
+        string normalizedMime = M_MediaTypeUtility.NormalizeMime(mime, safeFileName, null);
+        string normalizedKind = M_MediaTypeUtility.IsVideoKind(kind) || M_MediaTypeUtility.IsVideoMime(normalizedMime)
+            ? M_MediaTypeUtility.KindVideo
+            : M_MediaTypeUtility.KindImage;
+
+        FileInfo fileInfo = new FileInfo(path);
+        if (M_MediaTypeUtility.IsVideoKind(normalizedKind) && fileInfo.Length > Mathf.Max(1, maxSharedVideoBytes))
+        {
+            Debug.LogWarning($"[M_NetworkedPhotoSync] Video '{safeFileName}' is too large to share ({fileInfo.Length} bytes > {maxSharedVideoBytes} bytes).");
+            yield break;
+        }
+
+        byte[] bytes = null;
+        try
+        {
+            bytes = File.ReadAllBytes(path);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[M_NetworkedPhotoSync] Failed to read media file '{path}' for broadcast: {ex.Message}");
+        }
+
+        yield return BroadcastMediaBytesCoroutine(safeFileName, bytes, normalizedKind, normalizedMime);
+    }
+
+    private IEnumerator BroadcastMediaBytesCoroutine(string fileName, byte[] encodedBytes, string kind, string mime)
+    {
+        if (encodedBytes == null || encodedBytes.Length == 0)
+        {
+            Debug.LogWarning("[M_NetworkedPhotoSync] BroadcastMediaBytes ignored an empty payload.");
+            yield break;
+        }
+
+        string normalizedMime = M_MediaTypeUtility.NormalizeMime(mime, fileName, encodedBytes);
+        string normalizedKind = M_MediaTypeUtility.IsVideoKind(kind) || M_MediaTypeUtility.IsVideoMime(normalizedMime)
+            ? M_MediaTypeUtility.KindVideo
+            : M_MediaTypeUtility.KindImage;
+
+        if (M_MediaTypeUtility.IsVideoKind(normalizedKind) && encodedBytes.Length > Mathf.Max(1, maxSharedVideoBytes))
+        {
+            Debug.LogWarning($"[M_NetworkedPhotoSync] Video '{fileName}' is too large to share ({encodedBytes.Length} bytes > {maxSharedVideoBytes} bytes).");
+            yield break;
+        }
+
+        string safeFileName = string.IsNullOrWhiteSpace(fileName)
+            ? (M_MediaTypeUtility.IsVideoKind(normalizedKind) ? "Uploaded video" : "Uploaded photo")
+            : fileName;
+
+        if (IsDuplicateRecentBroadcast(safeFileName, normalizedKind, normalizedMime, encodedBytes))
         {
             if (verboseLogging)
                 Debug.Log($"[M_NetworkedPhotoSync] Skipped duplicate shared media broadcast: {safeFileName}");
@@ -302,25 +367,37 @@ public class M_NetworkedPhotoSync : MonoBehaviour
 
         if (!IsReadyLocalPlayer(localPlayer))
         {
-            Debug.LogWarning("[M_NetworkedPhotoSync] Shared image applied locally, but no spawned local network player was available for broadcast.");
+            Debug.LogWarning("[M_NetworkedPhotoSync] Shared media applied locally, but no spawned local network player was available for broadcast.");
             yield break;
         }
 
-        MarkBroadcastPayload(safeFileName, encodedBytes);
+        MarkBroadcastPayload(safeFileName, normalizedKind, normalizedMime, encodedBytes);
 
         if (verboseLogging)
-            Debug.Log($"[M_NetworkedPhotoSync] Broadcasting '{safeFileName}' ({encodedBytes.Length} bytes).");
+            Debug.Log($"[M_NetworkedPhotoSync] Broadcasting '{safeFileName}' as {normalizedKind}/{normalizedMime} ({encodedBytes.Length} bytes).");
 
-        InvokeBroadcastSharedMedia(localPlayer, safeFileName, encodedBytes);
+        InvokeBroadcastSharedMedia(localPlayer, safeFileName, encodedBytes, normalizedKind, normalizedMime);
     }
 
-    private void HandleSharedMediaReceived(string fileName, byte[] encodedBytes)
+    private void HandleSharedMediaReceived(string fileName, string kind, string mime, byte[] encodedBytes)
     {
         if (!isActiveAndEnabled || photoDisplay == null || encodedBytes == null || encodedBytes.Length == 0)
             return;
 
         _receivedSharedMediaThisScene = true;
 
+        string normalizedMime = M_MediaTypeUtility.NormalizeMime(mime, fileName, encodedBytes);
+        if (M_MediaTypeUtility.IsVideoKind(kind) || M_MediaTypeUtility.IsVideoMime(normalizedMime))
+        {
+            DisplayReceivedVideo(fileName, normalizedMime, encodedBytes);
+            return;
+        }
+
+        DisplayReceivedImage(fileName, encodedBytes);
+    }
+
+    private void DisplayReceivedImage(string fileName, byte[] encodedBytes)
+    {
         Texture2D syncedTexture = new Texture2D(2, 2, TextureFormat.RGBA32, true);
 
         if (!ImageConversion.LoadImage(syncedTexture, encodedBytes, markNonReadable: false))
@@ -343,6 +420,56 @@ public class M_NetworkedPhotoSync : MonoBehaviour
         photoDisplay.DisplayTexture(syncedTexture, fileName);
     }
 
+    private void DisplayReceivedVideo(string fileName, string mime, byte[] videoBytes)
+    {
+        string normalizedMime = M_MediaTypeUtility.NormalizeMime(mime, fileName, videoBytes);
+        if (!M_MediaTypeUtility.IsSupportedVideoMime(normalizedMime))
+        {
+            Debug.LogWarning($"[M_NetworkedPhotoSync] Ignored synchronized video '{fileName}' with unsupported MIME '{normalizedMime}'.");
+            return;
+        }
+
+        if (videoBytes.Length > Mathf.Max(1, maxSharedVideoBytes))
+        {
+            Debug.LogWarning($"[M_NetworkedPhotoSync] Ignored synchronized video '{fileName}' because it exceeded {maxSharedVideoBytes} bytes.");
+            return;
+        }
+
+        string videoPath = CacheReceivedVideo(fileName, normalizedMime, videoBytes);
+        if (string.IsNullOrWhiteSpace(videoPath))
+            return;
+
+        if (verboseLogging)
+            Debug.Log($"[M_NetworkedPhotoSync] Applied synchronized video '{fileName}' from '{videoPath}'.");
+
+        photoDisplay.DisplayVideo(videoPath, string.IsNullOrWhiteSpace(fileName) ? Path.GetFileName(videoPath) : Path.GetFileName(fileName));
+    }
+
+    private static string CacheReceivedVideo(string fileName, string mime, byte[] videoBytes)
+    {
+        try
+        {
+            string sha = M_MediaHashUtility.Sha256Hex(videoBytes);
+            if (string.IsNullOrWhiteSpace(sha))
+                return null;
+
+            string extension = M_MediaTypeUtility.ExtensionForMime(mime, fileName);
+            string directory = Path.Combine(Application.persistentDataPath, "MURPM", "NetworkSharedMedia", "videos");
+            Directory.CreateDirectory(directory);
+
+            string path = Path.Combine(directory, $"{sha}{extension}");
+            if (!File.Exists(path) || new FileInfo(path).Length != videoBytes.Length)
+                File.WriteAllBytes(path, videoBytes);
+
+            return path;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[M_NetworkedPhotoSync] Failed to cache synchronized video '{fileName}': {ex.Message}");
+            return null;
+        }
+    }
+
     private void HandleLocalPlayerSpawned()
     {
         if (clearDisplayWhenLocalPlayerSpawns)
@@ -358,31 +485,33 @@ public class M_NetworkedPhotoSync : MonoBehaviour
         _clearedLocalDisplayForJoin = true;
 
         if (verboseLogging)
-            Debug.Log($"[M_NetworkedPhotoSync] Cleared local image display on join ({reason}).");
+            Debug.Log($"[M_NetworkedPhotoSync] Cleared local media display on join ({reason}).");
     }
 
-    private bool IsDuplicateRecentBroadcast(string fileName, byte[] bytes)
+    private bool IsDuplicateRecentBroadcast(string fileName, string kind, string mime, byte[] bytes)
     {
         if (duplicateBroadcastWindowSeconds <= 0f)
             return false;
 
-        int signature = ComputePayloadSignature(fileName, bytes);
+        int signature = ComputePayloadSignature(fileName, kind, mime, bytes);
         return signature == _lastBroadcastSignature &&
                Time.unscaledTime - _lastBroadcastTime <= duplicateBroadcastWindowSeconds;
     }
 
-    private void MarkBroadcastPayload(string fileName, byte[] bytes)
+    private void MarkBroadcastPayload(string fileName, string kind, string mime, byte[] bytes)
     {
-        _lastBroadcastSignature = ComputePayloadSignature(fileName, bytes);
+        _lastBroadcastSignature = ComputePayloadSignature(fileName, kind, mime, bytes);
         _lastBroadcastTime = Time.unscaledTime;
     }
 
-    private static int ComputePayloadSignature(string fileName, byte[] bytes)
+    private static int ComputePayloadSignature(string fileName, string kind, string mime, byte[] bytes)
     {
         unchecked
         {
             int hash = 17;
             hash = hash * 31 + (fileName != null ? fileName.GetHashCode() : 0);
+            hash = hash * 31 + (kind != null ? kind.GetHashCode() : 0);
+            hash = hash * 31 + (mime != null ? mime.GetHashCode() : 0);
             hash = hash * 31 + (bytes != null ? bytes.Length : 0);
 
             if (bytes == null || bytes.Length == 0)
@@ -407,7 +536,7 @@ public class M_NetworkedPhotoSync : MonoBehaviour
                localPlayer.IsOwner;
     }
 
-    private void InvokeBroadcastSharedMedia(XRINetworkPlayer localPlayer, string fileName, byte[] encodedBytes)
+    private void InvokeBroadcastSharedMedia(XRINetworkPlayer localPlayer, string fileName, byte[] encodedBytes, string kind, string mime)
     {
         if (localPlayer == null)
         {
@@ -415,6 +544,6 @@ public class M_NetworkedPhotoSync : MonoBehaviour
             return;
         }
 
-        localPlayer.BroadcastSharedMedia(fileName, encodedBytes);
+        localPlayer.BroadcastSharedMedia(fileName, encodedBytes, kind, mime);
     }
 }

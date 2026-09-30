@@ -1,6 +1,6 @@
 /*
  * Script Name: M_SharedMediaDisplayUI.cs
- * Description: Displays the current shared lobby photo with transfer states, retry, and explicit save.
+ * Description: Displays the current shared lobby media item with transfer states, retry, and explicit save.
  * Project Role: Ensures shared media failures are visible instead of becoming blank or silently ignored panels.
  */
 
@@ -63,8 +63,8 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
             return;
 
         transferManager.RequestMediaFromHost(_currentEntry, M_MediaTransferFileRole.Thumbnail);
-        transferManager.RequestMediaFromHost(_currentEntry, M_MediaTransferFileRole.FullImage);
-        SetStatus("Retrying shared photo transfer...");
+        transferManager.RequestMediaFromHost(_currentEntry, M_MediaTransferFileRole.FullMedia);
+        SetStatus("Retrying shared media transfer...");
     }
 
     public void SaveCurrentToGallery()
@@ -73,16 +73,17 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
             return;
 
         string sha = _currentEntry.Sha256.ToString();
-        if (!sessionCache.TryGetCachedPath(sha, M_MediaTransferFileRole.FullImage, preferHostCache: false, out string path))
+        string mime = _currentEntry.Mime.ToString();
+        if (!sessionCache.TryGetCachedPath(sha, M_MediaTransferFileRole.FullMedia, false, out string path, mime))
         {
-            SetStatus("Full image is not available yet.");
+            SetStatus("Full media is not available yet.");
             return;
         }
 
-        if (importController.TryImportReceivedImageToLibrary(path, _currentEntry.DisplayName.ToString(), out M_MediaImportResult result))
-            SetStatus(result.Duplicate ? "This photo was already in your gallery." : "Saved to your Quest gallery.");
+        if (importController.TryImportReceivedMediaToLibrary(path, _currentEntry.DisplayName.ToString(), mime, out M_MediaImportResult result))
+            SetStatus(result.Duplicate ? "This media item was already in your gallery." : "Saved to your Quest gallery.");
         else
-            SetStatus(result?.Message ?? "Could not save this photo.");
+            SetStatus(result?.Message ?? "Could not save this media item.");
     }
 
     public void ClearReceivedCache()
@@ -106,7 +107,7 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
     {
         if (!_hasCurrentEntry)
         {
-            SetStatus("No shared photo yet.");
+            SetStatus("No shared media yet.");
             return;
         }
 
@@ -119,8 +120,10 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
 
         if (sessionCache != null)
         {
-            sessionCache.TryGetCachedPath(sha, M_MediaTransferFileRole.Thumbnail, preferHostCache: NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer, out thumbPath);
-            sessionCache.TryGetCachedPath(sha, M_MediaTransferFileRole.FullImage, preferHostCache: NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer, out fullPath);
+            string mime = _currentEntry.Mime.ToString();
+            bool preferHostCache = NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer;
+            sessionCache.TryGetCachedPath(sha, M_MediaTransferFileRole.Thumbnail, preferHostCache, out thumbPath, mime);
+            sessionCache.TryGetCachedPath(sha, M_MediaTransferFileRole.FullMedia, preferHostCache, out fullPath, mime);
         }
 
         if (string.IsNullOrWhiteSpace(fullPath) && mediaLibrary != null && NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClientId == _currentEntry.OwnerClientId)
@@ -134,16 +137,16 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
         {
             case MediaShareState.Announced:
             case MediaShareState.Transferring:
-                SetStatus("Receiving photo...");
+                SetStatus($"Receiving {M_MediaTypeUtility.DisplayNoun(_currentEntry.Kind.ToString())}...");
                 break;
             case MediaShareState.ThumbnailReady:
                 SetStatus("Thumbnail ready");
                 break;
             case MediaShareState.Ready:
-                SetStatus("Photo ready");
+                SetStatus($"{Capitalize(M_MediaTypeUtility.DisplayNoun(_currentEntry.Kind.ToString()))} ready");
                 break;
             case MediaShareState.Failed:
-                SetStatus("Image failed verification");
+                SetStatus("Media failed verification");
                 break;
             case MediaShareState.Cancelled:
                 SetStatus("Transfer interrupted");
@@ -154,7 +157,7 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
             surface?.DisplayFromFile(this, thumbPath);
 
         if (!string.IsNullOrWhiteSpace(fullPath))
-            surface?.DisplayFromFile(this, fullPath);
+            surface?.DisplayMediaFromFile(this, fullPath, _currentEntry.Kind.ToString(), _currentEntry.Mime.ToString());
     }
 
     private void HandleTransferProgress(ulong sequence, M_MediaTransferFileRole role, float progress)
@@ -168,8 +171,8 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
             progressSlider.value = Mathf.Clamp01(progress);
         }
 
-        if (role == M_MediaTransferFileRole.FullImage && progress < 1f)
-            SetStatus($"Full image loading: {Mathf.RoundToInt(progress * 100f)}%");
+        if (role == M_MediaTransferFileRole.FullMedia && progress < 1f)
+            SetStatus($"Full media loading: {Mathf.RoundToInt(progress * 100f)}%");
     }
 
     private void HandleFileReceived(M_MediaTransferCompletedFile file)
@@ -184,7 +187,7 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
     {
         if (catalog == null || catalog.Count == 0)
         {
-            SetStatus("No shared photo yet.");
+            SetStatus("No shared media yet.");
             return;
         }
 
@@ -252,5 +255,13 @@ public class M_SharedMediaDisplayUI : MonoBehaviour
     {
         if (statusText != null)
             statusText.text = status ?? string.Empty;
+    }
+
+    private static string Capitalize(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return char.ToUpperInvariant(value[0]) + value.Substring(1);
     }
 }

@@ -13,6 +13,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System;
+using UnityEngine.Video;
 
 /// <summary>
 /// Displays a selected Quest-local photo on either:
@@ -75,14 +76,44 @@ public class M_QuestPhotoDisplay : MonoBehaviour
     [Tooltip("Optional fallback texture shown when nothing is selected.")]
     public Texture fallbackTexture;
 
+    [Header("Video Display")]
+    [Tooltip("If true, videos start playing as soon as Unity finishes preparing them.")]
+    public bool autoPlayVideos = true;
+
+    [Tooltip("If true, displayed videos loop on the shared media display.")]
+    public bool loopVideos = true;
+
+    [Tooltip("Fallback render width used when a video does not report dimensions before playback.")]
+    public int fallbackVideoWidth = 1280;
+
+    [Tooltip("Fallback render height used when a video does not report dimensions before playback.")]
+    public int fallbackVideoHeight = 720;
+
+    [Header("Local Notifications")]
+    [Tooltip("Local-only audio notifier for new image/video display events.")]
+    [SerializeField] private M_LocalMediaNotificationAudio notificationAudio;
+
+    [Tooltip("Sound played locally when a new image is applied to this display.")]
+    [SerializeField] private AudioClip newImageNotificationClip;
+
+    [Tooltip("Sound played locally when a new video is applied to this display.")]
+    [SerializeField] private AudioClip newVideoNotificationClip;
+
+    [Tooltip("If true, play local notification sounds for image and video display events.")]
+    [SerializeField] private bool playLocalNotifications = true;
+
     [Header("Debug")]
     [Tooltip("If true, log detailed display information.")]
     public bool verboseLogging = true;
 
     private Texture2D _currentTexture;
+    private RenderTexture _currentVideoTexture;
     private Material _runtimeMaterial;
     private string _currentFileName;
     private Coroutine _layoutRefreshCoroutine;
+    private Coroutine _videoDisplayCoroutine;
+    private VideoPlayer _videoPlayer;
+    private M_SharedMediaVideoAudio _videoAudio;
 
     private void Start()
     {
@@ -94,6 +125,7 @@ public class M_QuestPhotoDisplay : MonoBehaviour
     /// </summary>
     public void ClearDisplay()
     {
+        StopVideoPlayback(releaseTexture: true);
         ReleaseCurrentTexture();
         _currentFileName = string.Empty;
         ApplyFallback();
@@ -139,6 +171,7 @@ public class M_QuestPhotoDisplay : MonoBehaviour
             return;
         }
 
+        StopVideoPlayback(releaseTexture: true);
         ReleaseCurrentTexture();
         _currentTexture = texture;
         _currentFileName = fileName ?? string.Empty;
@@ -153,6 +186,29 @@ public class M_QuestPhotoDisplay : MonoBehaviour
 
         if (verboseLogging)
             Debug.Log($"[M_QuestPhotoDisplay] Displayed provided texture: {_currentFileName} ({_currentTexture.width}x{_currentTexture.height})");
+
+        PlayImageNotification(_currentFileName);
+    }
+
+    public void DisplayVideo(string videoPath, string fileName = "")
+    {
+        if (string.IsNullOrWhiteSpace(videoPath) || !File.Exists(videoPath))
+        {
+            Debug.LogWarning($"[M_QuestPhotoDisplay] DisplayVideo failed: missing file '{videoPath}'.");
+            if (statusText != null)
+                statusText.text = "Video file missing";
+            return;
+        }
+
+        if (_videoDisplayCoroutine != null)
+            StopCoroutine(_videoDisplayCoroutine);
+
+        PlayVideoNotification(string.IsNullOrWhiteSpace(fileName) ? Path.GetFileName(videoPath) : fileName);
+
+        _videoDisplayCoroutine = null;
+        StopVideoPlayback(releaseTexture: true);
+        ReleaseCurrentTexture();
+        _videoDisplayCoroutine = StartCoroutine(DisplayVideoCoroutine(videoPath, fileName));
     }
 
     private IEnumerator DisplayPhotoCoroutine(M_QuestGalleryAndroidBridge bridge, M_QuestGalleryAndroidBridge.GalleryItem item)
@@ -275,6 +331,137 @@ public class M_QuestPhotoDisplay : MonoBehaviour
         }
     }
 
+    private IEnumerator DisplayVideoCoroutine(string videoPath, string fileName)
+    {
+        EnsureVideoComponents();
+
+        _currentFileName = string.IsNullOrWhiteSpace(fileName) ? Path.GetFileName(videoPath) : fileName;
+
+        if (fileNameText != null)
+            fileNameText.text = _currentFileName;
+
+        if (statusText != null)
+            statusText.text = "Loading video...";
+
+        _videoPlayer.source = VideoSource.Url;
+        _videoPlayer.url = new Uri(videoPath).AbsoluteUri;
+        _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        _videoPlayer.playOnAwake = false;
+        _videoPlayer.waitForFirstFrame = true;
+        _videoPlayer.isLooping = loopVideos;
+        _videoAudio.ConfigureForVideoPlayer(_videoPlayer);
+
+        _videoPlayer.Prepare();
+        float timeout = 15f;
+        while (!_videoPlayer.isPrepared && timeout > 0f)
+        {
+            timeout -= Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        int width = Mathf.Max(1, (int)_videoPlayer.width);
+        int height = Mathf.Max(1, (int)_videoPlayer.height);
+        if (width <= 1 || height <= 1)
+        {
+            width = Mathf.Max(1, fallbackVideoWidth);
+            height = Mathf.Max(1, fallbackVideoHeight);
+        }
+
+        _currentVideoTexture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32)
+        {
+            name = $"QuestPhotoDisplayVideo_{width}x{height}"
+        };
+        _currentVideoTexture.Create();
+        _videoPlayer.targetTexture = _currentVideoTexture;
+        ApplyTexture(_currentVideoTexture);
+
+        if (statusText != null)
+            statusText.text = $"Video ready: {width} x {height}";
+
+        if (autoPlayVideos && _videoPlayer.isPrepared)
+            _videoPlayer.Play();
+
+        if (verboseLogging)
+            Debug.Log($"[M_QuestPhotoDisplay] Displayed video: {_currentFileName} ({width}x{height})");
+
+        _videoDisplayCoroutine = null;
+    }
+
+    private void EnsureVideoComponents()
+    {
+        if (_videoPlayer == null)
+            _videoPlayer = GetComponent<VideoPlayer>();
+
+        if (_videoPlayer == null)
+            _videoPlayer = gameObject.AddComponent<VideoPlayer>();
+
+        if (_videoAudio == null)
+            _videoAudio = GetComponent<M_SharedMediaVideoAudio>();
+
+        if (_videoAudio == null)
+            _videoAudio = gameObject.AddComponent<M_SharedMediaVideoAudio>();
+    }
+
+    private void PlayImageNotification(string mediaName)
+    {
+        if (!playLocalNotifications)
+            return;
+
+        M_LocalMediaNotificationAudio notifier = EnsureNotificationAudio();
+        notifier?.PlayNewImage(mediaName);
+    }
+
+    private void PlayVideoNotification(string mediaName)
+    {
+        if (!playLocalNotifications)
+            return;
+
+        M_LocalMediaNotificationAudio notifier = EnsureNotificationAudio();
+        notifier?.PlayNewVideo(mediaName);
+    }
+
+    private M_LocalMediaNotificationAudio EnsureNotificationAudio()
+    {
+        if (notificationAudio == null)
+            notificationAudio = GetComponent<M_LocalMediaNotificationAudio>();
+
+        if (notificationAudio == null)
+            notificationAudio = gameObject.AddComponent<M_LocalMediaNotificationAudio>();
+
+        notificationAudio.ConfigureClips(newImageNotificationClip, newVideoNotificationClip);
+        return notificationAudio;
+    }
+
+    private void StopVideoPlayback(bool releaseTexture)
+    {
+        if (_videoDisplayCoroutine != null)
+        {
+            StopCoroutine(_videoDisplayCoroutine);
+            _videoDisplayCoroutine = null;
+        }
+
+        if (_videoPlayer != null)
+        {
+            _videoPlayer.Stop();
+            _videoPlayer.targetTexture = null;
+        }
+
+        _videoAudio?.Stop();
+
+        if (releaseTexture)
+            ReleaseVideoTexture();
+    }
+
+    private void ReleaseVideoTexture()
+    {
+        if (_currentVideoTexture == null)
+            return;
+
+        _currentVideoTexture.Release();
+        Destroy(_currentVideoTexture);
+        _currentVideoTexture = null;
+    }
+
     private void UpdateRawImageLayout(Texture texture)
     {
         if (targetRawImage == null || texture == null)
@@ -336,6 +523,7 @@ public class M_QuestPhotoDisplay : MonoBehaviour
         }
 
         ReleaseCurrentTexture();
+        StopVideoPlayback(releaseTexture: true);
 
         if (_runtimeMaterial != null)
             Destroy(_runtimeMaterial);

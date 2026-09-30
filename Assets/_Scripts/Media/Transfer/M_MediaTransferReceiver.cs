@@ -14,6 +14,7 @@ public sealed class M_MediaTransferReceiver
     private readonly M_SessionMediaCache _cache;
     private readonly int _maxChunkPayloadBytes;
     private readonly int _maxFullImageBytes;
+    private readonly int _maxFullVideoBytes;
     private readonly int _maxThumbnailBytes;
     private readonly Dictionary<string, ReceiveSession> _sessions = new Dictionary<string, ReceiveSession>(StringComparer.OrdinalIgnoreCase);
 
@@ -21,11 +22,12 @@ public sealed class M_MediaTransferReceiver
     public event Action<ulong, M_MediaTransferFileRole, float> ProgressChanged;
     public event Action<ulong, string> TransferFailed;
 
-    public M_MediaTransferReceiver(M_SessionMediaCache cache, int maxChunkPayloadBytes, int maxFullImageBytes, int maxThumbnailBytes)
+    public M_MediaTransferReceiver(M_SessionMediaCache cache, int maxChunkPayloadBytes, int maxFullImageBytes, int maxFullVideoBytes, int maxThumbnailBytes)
     {
         _cache = cache;
         _maxChunkPayloadBytes = Mathf.Max(512, maxChunkPayloadBytes);
         _maxFullImageBytes = Mathf.Max(1024, maxFullImageBytes);
+        _maxFullVideoBytes = Mathf.Max(1024, maxFullVideoBytes);
         _maxThumbnailBytes = Mathf.Max(1024, maxThumbnailBytes);
     }
 
@@ -38,7 +40,7 @@ public sealed class M_MediaTransferReceiver
             return;
         }
 
-        int maxBytes = header.Role == M_MediaTransferFileRole.Thumbnail ? _maxThumbnailBytes : _maxFullImageBytes;
+        int maxBytes = GetMaxBytes(header);
         if (header.TotalBytes <= 0 || header.TotalBytes > maxBytes)
         {
             Fail(header.Sequence, transferId, $"Received {header.Role} is too large.");
@@ -53,7 +55,8 @@ public sealed class M_MediaTransferReceiver
 
         string identitySha = header.IdentitySha256.ToString();
         string contentSha = header.Sha256.ToString();
-        if (_cache.HasVerifiedFile(identitySha, header.Role, storeInHostCache, contentSha))
+        string mime = header.Mime.ToString();
+        if (_cache.HasVerifiedFile(identitySha, header.Role, storeInHostCache, contentSha, mime))
         {
             FileCompleted?.Invoke(new M_MediaTransferCompletedFile
             {
@@ -64,7 +67,7 @@ public sealed class M_MediaTransferReceiver
                 IdentitySha256 = identitySha,
                 ContentSha256 = contentSha,
                 Role = header.Role,
-                LocalPath = _cache.GetCachePath(identitySha, header.Role, storeInHostCache),
+                LocalPath = _cache.GetCachePath(identitySha, header.Role, storeInHostCache, mime),
                 StoredInHostCache = storeInHostCache
             });
             return;
@@ -141,7 +144,8 @@ public sealed class M_MediaTransferReceiver
 
         string identitySha = session.Header.IdentitySha256.ToString();
         string contentSha = session.Header.Sha256.ToString();
-        if (!_cache.StoreVerifiedTemp(session.TempPath, identitySha, contentSha, session.Header.Role, session.StoreInHostCache, out string finalPath, out string failureReason))
+        string mime = session.Header.Mime.ToString();
+        if (!_cache.StoreVerifiedTemp(session.TempPath, identitySha, contentSha, session.Header.Role, session.StoreInHostCache, out string finalPath, out string failureReason, mime))
         {
             Fail(header.Sequence, transferId, failureReason);
             return;
@@ -192,14 +196,31 @@ public sealed class M_MediaTransferReceiver
             return false;
         }
 
-        if (header.Role != M_MediaTransferFileRole.Thumbnail && header.Role != M_MediaTransferFileRole.FullImage)
+        if (header.Role != M_MediaTransferFileRole.Thumbnail && header.Role != M_MediaTransferFileRole.FullMedia)
         {
             reason = "Transfer file role was invalid.";
             return false;
         }
 
+        string mime = header.Mime.ToString();
+        if (header.Role == M_MediaTransferFileRole.FullMedia
+            && !M_MediaTypeUtility.IsSupportedImageMime(mime)
+            && !M_MediaTypeUtility.IsSupportedVideoMime(mime))
+        {
+            reason = "Transfer media type was invalid.";
+            return false;
+        }
+
         reason = null;
         return true;
+    }
+
+    private int GetMaxBytes(M_MediaTransferHeader header)
+    {
+        if (header.Role == M_MediaTransferFileRole.Thumbnail)
+            return _maxThumbnailBytes;
+
+        return M_MediaTypeUtility.IsVideoMime(header.Mime.ToString()) ? _maxFullVideoBytes : _maxFullImageBytes;
     }
 
     private void Fail(ulong sequence, string transferId, string reason)

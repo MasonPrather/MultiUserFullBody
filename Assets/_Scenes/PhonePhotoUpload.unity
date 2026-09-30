@@ -4492,6 +4492,14 @@ MonoBehaviour:
   serverBootstrap: {fileID: 920100000000000003}
   phoneImportMode: {fileID: 920100000000000005}
   characterResetter: {fileID: 0}
+  pauseMenuOptions: {fileID: 8374908807138913194}
+  attachToPauseMenuAfterDismissal: 1
+  pauseMenuRoot: {fileID: 8374908807138913195}
+  pauseMenuRootName: Player_Menu_UI
+  pauseMenuOwnsToggleAfterDismissal: 1
+  dockedHorizontalOffsetMeters: 0.86
+  dockedVerticalOffsetMeters: 0
+  dockedDepthOffsetMeters: 0
   menuRoot: {fileID: 0}
   titleText: {fileID: 0}
   instructionsText: {fileID: 0}
@@ -11318,6 +11326,16 @@ MonoBehaviour:
 --- !u!1 &8374908807138913193 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1641682437618806733, guid: 95bd29654e15ad844be6210374a75967, type: 3}
+  m_PrefabInstance: {fileID: 8374908807138913190}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &8374908807138913194 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 299073717673094962, guid: 95bd29654e15ad844be6210374a75967, type: 3}
+  m_PrefabInstance: {fileID: 8374908807138913190}
+  m_PrefabAsset: {fileID: 0}
+--- !u!224 &8374908807138913195 stripped
+RectTransform:
+  m_CorrespondingSourceObject: {fileID: 3746510943397739456, guid: 95bd29654e15ad844be6210374a75967, type: 3}
   m_PrefabInstance: {fileID: 8374908807138913190}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &8402281819704407221

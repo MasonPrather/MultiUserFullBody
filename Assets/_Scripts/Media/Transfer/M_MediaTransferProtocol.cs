@@ -24,12 +24,13 @@ public enum MediaMsgType : byte
 public enum M_MediaTransferFileRole : byte
 {
     Thumbnail = 1,
-    FullImage = 2
+    FullMedia = 2,
+    FullImage = FullMedia
 }
 
 public struct M_MediaTransferHeader
 {
-    public const byte ProtocolVersion = 1;
+    public const byte ProtocolVersion = 2;
 
     public byte Version;
     public MediaMsgType MsgType;
@@ -45,6 +46,8 @@ public struct M_MediaTransferHeader
     public int TotalBytes;
     public int Width;
     public int Height;
+    public FixedString32Bytes Kind;
+    public FixedString32Bytes Mime;
 
     public bool IsSupported => Version == ProtocolVersion;
 
@@ -64,6 +67,8 @@ public struct M_MediaTransferHeader
         writer.WriteValueSafe(TotalBytes);
         writer.WriteValueSafe(Width);
         writer.WriteValueSafe(Height);
+        writer.WriteValueSafe(Kind);
+        writer.WriteValueSafe(Mime);
     }
 
     public static M_MediaTransferHeader Read(FastBufferReader reader)
@@ -83,6 +88,8 @@ public struct M_MediaTransferHeader
         reader.ReadValueSafe(out header.TotalBytes);
         reader.ReadValueSafe(out header.Width);
         reader.ReadValueSafe(out header.Height);
+        reader.ReadValueSafe(out header.Kind);
+        reader.ReadValueSafe(out header.Mime);
         return header;
     }
 }

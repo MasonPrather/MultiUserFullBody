@@ -12,7 +12,7 @@
 ## Hardware Assumptions
 
 - Meta Quest headset with controller or hand tracking support.
-- Phone with a modern browser for the no-install photo upload page.
+- Phone with a modern browser for the no-install media upload page.
 - Local Wi-Fi network that allows peer-to-peer device traffic.
 - Microphone permission for Vivox voice.
 - Quest passthrough support for headset-on phone pairing flows.
@@ -76,7 +76,7 @@ The repository does not include a custom build automation script. Build through 
 
 The active build scene can be verified in `ProjectSettings/EditorBuildSettings.asset`.
 
-## Running the Phone Photo Upload Flow
+## Running the Phone Media Upload Flow
 
 1. Open `Assets/_Scenes/PhonePhotoUpload.unity`.
 2. Enter Play Mode or run the scene on Quest.
@@ -85,8 +85,8 @@ The active build scene can be verified in `ProjectSettings/EditorBuildSettings.a
 5. Connect the phone to the same Wi-Fi network as the Quest.
 6. Open one displayed local URL, such as `192.168.1.25:8080`.
 7. Enter the headset code.
-8. Select and upload one or more photos.
-9. Confirm the newest photo appears in the Unity display.
+8. Select and upload one or more photos or videos.
+9. Confirm the newest media item appears in the Unity display.
 10. Use the menu's `Passthrough`, `Recenter`, and `Close` controls if the room needs passthrough review, the menu needs to move, or the user wants to dismiss it.
 11. Confirm gallery refresh and shared-media broadcast logs when the scene includes multiplayer player objects.
 

@@ -83,6 +83,11 @@ namespace XRMultiplayer
         public static event Action<string, byte[]> onSharedMediaReceived;
 
         /// <summary>
+        /// Raised when a shared media upload has been received with type metadata.
+        /// </summary>
+        public static event Action<string, string, string, byte[]> onSharedMediaPayloadReceived;
+
+        /// <summary>
         /// Raised after the local network player has spawned and finished local setup.
         /// </summary>
         public static event Action onLocalPlayerSpawned;
@@ -193,8 +198,10 @@ namespace XRMultiplayer
         const int k_MaxSharedMediaChunkSize = 4 * 1024;
         const int k_MinSharedMediaChunkSize = 512;
         const int k_SharedMediaRpcOverheadReserve = 1024;
+        const string k_SharedMediaKindImage = "image";
+        const string k_SharedMediaKindVideo = "video";
 
-        [Header("Shared Media Sync"), SerializeField, Tooltip("Maximum image chunks sent per frame by the uploading client and relay.")]
+        [Header("Shared Media Sync"), SerializeField, Tooltip("Maximum media chunks sent per frame by the uploading client and relay.")]
         int m_SharedMediaChunksPerFrame = 4;
 
         [SerializeField, Tooltip("If true, log shared-media transfer progress.")]
@@ -207,20 +214,31 @@ namespace XRMultiplayer
         static ulong s_ServerSharedMediaDownloadId = 1UL << 63;
         static bool s_HasLatestSharedMedia;
         static FixedString128Bytes s_LatestSharedMediaFileName;
+        static FixedString32Bytes s_LatestSharedMediaKind;
+        static FixedString32Bytes s_LatestSharedMediaMime;
         static byte[] s_LatestSharedMediaBytes;
 
         class PendingSharedMediaUpload
         {
             public FixedString128Bytes fileName;
+            public FixedString32Bytes kind;
+            public FixedString32Bytes mime;
             public int totalBytes;
             public int totalChunks;
             public byte[][] chunks;
             public int receivedChunkCount;
             public bool completionRequested;
 
-            public PendingSharedMediaUpload(FixedString128Bytes uploadFileName, int uploadTotalBytes, int uploadTotalChunks)
+            public PendingSharedMediaUpload(
+                FixedString128Bytes uploadFileName,
+                FixedString32Bytes uploadKind,
+                FixedString32Bytes uploadMime,
+                int uploadTotalBytes,
+                int uploadTotalChunks)
             {
                 fileName = uploadFileName;
+                kind = uploadKind;
+                mime = uploadMime;
                 totalBytes = Mathf.Max(0, uploadTotalBytes);
                 totalChunks = Mathf.Max(1, uploadTotalChunks);
                 chunks = new byte[totalChunks][];
@@ -551,13 +569,21 @@ namespace XRMultiplayer
         /// </summary>
         public void BroadcastSharedMedia(string fileName, byte[] imageBytes)
         {
+            BroadcastSharedMedia(fileName, imageBytes, k_SharedMediaKindImage, null);
+        }
+
+        /// <summary>
+        /// Broadcasts a shared media payload from the local owning player to all connected clients.
+        /// </summary>
+        public void BroadcastSharedMedia(string fileName, byte[] mediaBytes, string kind, string mime)
+        {
             if (!IsOwner)
             {
                 Utils.Log("BroadcastSharedMedia can only be called by the owning player.", 1);
                 return;
             }
 
-            if (imageBytes == null || imageBytes.Length == 0)
+            if (mediaBytes == null || mediaBytes.Length == 0)
             {
                 Utils.Log("BroadcastSharedMedia ignored an empty payload.", 1);
                 return;
@@ -571,27 +597,35 @@ namespace XRMultiplayer
 
             m_LocalSharedMediaUploadId++;
 
-            var fixedFileName = new FixedString128Bytes(string.IsNullOrWhiteSpace(fileName) ? "Uploaded photo" : fileName);
+            NormalizeSharedMediaMetadata(fileName, mediaBytes, kind, mime, out FixedString32Bytes fixedKind, out FixedString32Bytes fixedMime);
+            var fixedFileName = new FixedString128Bytes(string.IsNullOrWhiteSpace(fileName) ? DefaultSharedMediaName(fixedKind) : fileName);
             int chunkSize = GetSharedMediaChunkSize();
-            int totalChunks = Mathf.Max(1, Mathf.CeilToInt(imageBytes.Length / (float)chunkSize));
+            int totalChunks = Mathf.Max(1, Mathf.CeilToInt(mediaBytes.Length / (float)chunkSize));
 
             if (IsDistributedAuthoritySession())
             {
-                CacheLatestSharedMedia(fixedFileName, imageBytes);
+                CacheLatestSharedMedia(fixedFileName, fixedKind, fixedMime, mediaBytes);
                 m_LocalSharedMediaEchoSkips.Add(m_LocalSharedMediaUploadId);
-                StartCoroutine(RelaySharedMediaToClientsCoroutine(m_LocalSharedMediaUploadId, fixedFileName, imageBytes));
+                StartCoroutine(RelaySharedMediaToClientsCoroutine(m_LocalSharedMediaUploadId, fixedFileName, fixedKind, fixedMime, mediaBytes));
                 return;
             }
 
             if (ShouldSkipLocalSharedMediaEcho())
                 m_LocalSharedMediaEchoSkips.Add(m_LocalSharedMediaUploadId);
 
-            StartCoroutine(BroadcastSharedMediaCoroutine(m_LocalSharedMediaUploadId, fixedFileName, imageBytes, chunkSize, totalChunks));
+            StartCoroutine(BroadcastSharedMediaCoroutine(m_LocalSharedMediaUploadId, fixedFileName, fixedKind, fixedMime, mediaBytes, chunkSize, totalChunks));
         }
 
-        IEnumerator BroadcastSharedMediaCoroutine(ulong uploadId, FixedString128Bytes fixedFileName, byte[] imageBytes, int chunkSize, int totalChunks)
+        IEnumerator BroadcastSharedMediaCoroutine(
+            ulong uploadId,
+            FixedString128Bytes fixedFileName,
+            FixedString32Bytes fixedKind,
+            FixedString32Bytes fixedMime,
+            byte[] mediaBytes,
+            int chunkSize,
+            int totalChunks)
         {
-            BeginSharedMediaUploadServerRpc(uploadId, fixedFileName, imageBytes.Length, totalChunks);
+            BeginSharedMediaUploadServerRpc(uploadId, fixedFileName, fixedKind, fixedMime, mediaBytes.Length, totalChunks);
 
             int chunksSentThisFrame = 0;
             int chunksPerFrame = Mathf.Max(1, m_SharedMediaChunksPerFrame);
@@ -599,9 +633,9 @@ namespace XRMultiplayer
             for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++)
             {
                 int sourceOffset = chunkIndex * chunkSize;
-                int chunkLength = Mathf.Min(chunkSize, imageBytes.Length - sourceOffset);
+                int chunkLength = Mathf.Min(chunkSize, mediaBytes.Length - sourceOffset);
                 byte[] chunk = new byte[chunkLength];
-                Buffer.BlockCopy(imageBytes, sourceOffset, chunk, 0, chunkLength);
+                Buffer.BlockCopy(mediaBytes, sourceOffset, chunk, 0, chunkLength);
                 SubmitSharedMediaChunkServerRpc(uploadId, chunkIndex, chunk);
 
                 chunksSentThisFrame++;
@@ -615,15 +649,164 @@ namespace XRMultiplayer
             CompleteSharedMediaUploadServerRpc(uploadId);
 
             if (m_LogSharedMediaSync)
-                Utils.Log($"Shared media upload queued: {fixedFileName} ({imageBytes.Length} bytes, {totalChunks} chunks at {chunkSize} bytes/chunk).");
+                Utils.Log($"Shared media upload queued: {fixedFileName} [{fixedKind}/{fixedMime}] ({mediaBytes.Length} bytes, {totalChunks} chunks at {chunkSize} bytes/chunk).");
+        }
+
+        static void NormalizeSharedMediaMetadata(
+            string fileName,
+            byte[] mediaBytes,
+            string requestedKind,
+            string requestedMime,
+            out FixedString32Bytes fixedKind,
+            out FixedString32Bytes fixedMime)
+        {
+            string normalizedMime = NormalizeSharedMediaMime(requestedMime, fileName, mediaBytes);
+            bool isVideo = IsVideoKind(requestedKind) || IsVideoMime(normalizedMime);
+            string normalizedKind = isVideo ? k_SharedMediaKindVideo : k_SharedMediaKindImage;
+
+            if (string.IsNullOrWhiteSpace(normalizedMime))
+                normalizedMime = isVideo ? "video/mp4" : "image/jpeg";
+
+            fixedKind = ToFixed32(normalizedKind);
+            fixedMime = ToFixed32(normalizedMime);
+        }
+
+        static FixedString32Bytes ToFixed32(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return new FixedString32Bytes(string.Empty);
+
+            string trimmed = value.Trim();
+            return new FixedString32Bytes(trimmed.Length <= 29 ? trimmed : trimmed.Substring(0, 29));
+        }
+
+        static string DefaultSharedMediaName(FixedString32Bytes kind)
+        {
+            return IsSharedMediaImage(kind, default) ? "Uploaded photo" : "Uploaded video";
+        }
+
+        static bool IsSharedMediaImage(FixedString32Bytes kind, FixedString32Bytes mime)
+        {
+            string kindString = kind.ToString();
+            string mimeString = mime.ToString();
+            if (IsVideoKind(kindString) || IsVideoMime(mimeString))
+                return false;
+
+            return true;
+        }
+
+        static string NormalizeSharedMediaMime(string mime, string fileName, byte[] bytes)
+        {
+            string lower = string.IsNullOrWhiteSpace(mime) ? string.Empty : mime.Trim().ToLowerInvariant();
+            int semicolon = lower.IndexOf(';');
+            if (semicolon >= 0)
+                lower = lower.Substring(0, semicolon).Trim();
+
+            if (lower == "image/jpg")
+                lower = "image/jpeg";
+
+            if (IsSupportedSharedImageMime(lower) || IsSupportedSharedVideoMime(lower))
+                return lower;
+
+            if (bytes != null)
+            {
+                if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+                    return "image/jpeg";
+
+                if (bytes.Length >= 8
+                    && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+                    && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A)
+                    return "image/png";
+
+                if (LooksLikeIsoBaseMediaFile(bytes))
+                    return GuessIsoBaseMediaMime(fileName);
+
+                if (bytes.Length >= 4 && bytes[0] == 0x1A && bytes[1] == 0x45 && bytes[2] == 0xDF && bytes[3] == 0xA3)
+                    return "video/webm";
+            }
+
+            string extension = GetLowerExtension(fileName);
+            switch (extension)
+            {
+                case ".jpg":
+                case ".jpeg":
+                    return "image/jpeg";
+                case ".png":
+                    return "image/png";
+                case ".mp4":
+                    return "video/mp4";
+                case ".m4v":
+                    return "video/x-m4v";
+                case ".mov":
+                    return "video/quicktime";
+                case ".webm":
+                    return "video/webm";
+                default:
+                    return lower;
+            }
+        }
+
+        static bool IsSupportedSharedImageMime(string mime)
+        {
+            return string.Equals(mime, "image/jpeg", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(mime, "image/png", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsSupportedSharedVideoMime(string mime)
+        {
+            return string.Equals(mime, "video/mp4", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(mime, "video/quicktime", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(mime, "video/x-m4v", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(mime, "video/webm", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsVideoKind(string kind)
+        {
+            return string.Equals(kind, k_SharedMediaKindVideo, StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsVideoMime(string mime)
+        {
+            return !string.IsNullOrWhiteSpace(mime)
+                   && mime.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool LooksLikeIsoBaseMediaFile(byte[] bytes)
+        {
+            return bytes.Length >= 12
+                   && bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70;
+        }
+
+        static string GuessIsoBaseMediaMime(string fileName)
+        {
+            string extension = GetLowerExtension(fileName);
+            if (extension == ".mov")
+                return "video/quicktime";
+
+            if (extension == ".m4v")
+                return "video/x-m4v";
+
+            return "video/mp4";
+        }
+
+        static string GetLowerExtension(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+                return string.Empty;
+
+            int slashIndex = Mathf.Max(fileName.LastIndexOf('/'), fileName.LastIndexOf('\\'));
+            int dotIndex = fileName.LastIndexOf('.');
+            if (dotIndex < 0 || dotIndex < slashIndex || dotIndex == fileName.Length - 1)
+                return string.Empty;
+
+            return fileName.Substring(dotIndex).ToLowerInvariant();
         }
 
         bool ShouldSkipLocalSharedMediaEcho()
         {
             NetworkManager networkManager = this.NetworkManager;
             return networkManager != null &&
-                   !networkManager.DistributedAuthorityMode &&
-                   !networkManager.IsServer;
+                   !networkManager.DistributedAuthorityMode;
         }
 
         bool IsDistributedAuthoritySession()
@@ -660,12 +843,19 @@ namespace XRMultiplayer
         }
 
         [ServerRpc(RequireOwnership = false)]
-        void BeginSharedMediaUploadServerRpc(ulong uploadId, FixedString128Bytes fileName, int totalBytes, int totalChunks, ServerRpcParams rpcParams = default)
+        void BeginSharedMediaUploadServerRpc(
+            ulong uploadId,
+            FixedString128Bytes fileName,
+            FixedString32Bytes kind,
+            FixedString32Bytes mime,
+            int totalBytes,
+            int totalChunks,
+            ServerRpcParams rpcParams = default)
         {
             if (!IsValidSharedMediaSender(rpcParams))
                 return;
 
-            m_PendingServerSharedMediaUploads[uploadId] = new PendingSharedMediaUpload(fileName, totalBytes, totalChunks);
+            m_PendingServerSharedMediaUploads[uploadId] = new PendingSharedMediaUpload(fileName, kind, mime, totalBytes, totalChunks);
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -712,24 +902,28 @@ namespace XRMultiplayer
             if (!pendingUpload.completionRequested || !pendingUpload.IsComplete())
                 return;
 
-            byte[] combinedImageBytes = pendingUpload.Combine();
+            byte[] combinedMediaBytes = pendingUpload.Combine();
             var fileName = pendingUpload.fileName;
+            var kind = pendingUpload.kind;
+            var mime = pendingUpload.mime;
 
             m_PendingServerSharedMediaUploads.Remove(uploadId);
 
-            CacheLatestSharedMedia(fileName, combinedImageBytes);
-            StartCoroutine(RelaySharedMediaToClientsCoroutine(uploadId, fileName, combinedImageBytes));
+            CacheLatestSharedMedia(fileName, kind, mime, combinedMediaBytes);
+            StartCoroutine(RelaySharedMediaToClientsCoroutine(uploadId, fileName, kind, mime, combinedMediaBytes));
         }
 
-        static void CacheLatestSharedMedia(FixedString128Bytes fileName, byte[] combinedImageBytes)
+        static void CacheLatestSharedMedia(FixedString128Bytes fileName, FixedString32Bytes kind, FixedString32Bytes mime, byte[] combinedMediaBytes)
         {
-            if (combinedImageBytes == null || combinedImageBytes.Length == 0)
+            if (combinedMediaBytes == null || combinedMediaBytes.Length == 0)
                 return;
 
             s_HasLatestSharedMedia = true;
             s_LatestSharedMediaFileName = fileName;
-            s_LatestSharedMediaBytes = new byte[combinedImageBytes.Length];
-            Buffer.BlockCopy(combinedImageBytes, 0, s_LatestSharedMediaBytes, 0, combinedImageBytes.Length);
+            s_LatestSharedMediaKind = kind;
+            s_LatestSharedMediaMime = mime;
+            s_LatestSharedMediaBytes = new byte[combinedMediaBytes.Length];
+            Buffer.BlockCopy(combinedMediaBytes, 0, s_LatestSharedMediaBytes, 0, combinedMediaBytes.Length);
         }
 
         static ulong GetNextServerSharedMediaDownloadId()
@@ -761,18 +955,24 @@ namespace XRMultiplayer
                 yield break;
 
             ulong downloadId = GetNextServerSharedMediaDownloadId();
-            relayPlayer.StartCoroutine(relayPlayer.RelaySharedMediaToClientsCoroutine(downloadId, s_LatestSharedMediaFileName, latestBytes, OwnerClientId));
+            relayPlayer.StartCoroutine(relayPlayer.RelaySharedMediaToClientsCoroutine(downloadId, s_LatestSharedMediaFileName, s_LatestSharedMediaKind, s_LatestSharedMediaMime, latestBytes, OwnerClientId));
         }
 
-        IEnumerator RelaySharedMediaToClientsCoroutine(ulong uploadId, FixedString128Bytes fileName, byte[] combinedImageBytes, ulong? targetClientId = null)
+        IEnumerator RelaySharedMediaToClientsCoroutine(
+            ulong uploadId,
+            FixedString128Bytes fileName,
+            FixedString32Bytes kind,
+            FixedString32Bytes mime,
+            byte[] combinedMediaBytes,
+            ulong? targetClientId = null)
         {
-            if (combinedImageBytes == null || combinedImageBytes.Length == 0)
+            if (combinedMediaBytes == null || combinedMediaBytes.Length == 0)
                 yield break;
 
             int chunkSize = GetSharedMediaChunkSize();
-            int totalChunks = Mathf.Max(1, Mathf.CeilToInt(combinedImageBytes.Length / (float)chunkSize));
+            int totalChunks = Mathf.Max(1, Mathf.CeilToInt(combinedMediaBytes.Length / (float)chunkSize));
 
-            BeginSharedMediaDownloadRpc(uploadId, fileName, combinedImageBytes.Length, totalChunks, CreateSharedMediaTargetParams(targetClientId));
+            BeginSharedMediaDownloadRpc(uploadId, fileName, kind, mime, combinedMediaBytes.Length, totalChunks, CreateSharedMediaTargetParams(targetClientId));
 
             int chunksSentThisFrame = 0;
             int chunksPerFrame = Mathf.Max(1, m_SharedMediaChunksPerFrame);
@@ -780,9 +980,9 @@ namespace XRMultiplayer
             for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++)
             {
                 int sourceOffset = chunkIndex * chunkSize;
-                int chunkLength = Mathf.Min(chunkSize, combinedImageBytes.Length - sourceOffset);
+                int chunkLength = Mathf.Min(chunkSize, combinedMediaBytes.Length - sourceOffset);
                 byte[] chunk = new byte[chunkLength];
-                Buffer.BlockCopy(combinedImageBytes, sourceOffset, chunk, 0, chunkLength);
+                Buffer.BlockCopy(combinedMediaBytes, sourceOffset, chunk, 0, chunkLength);
                 SubmitSharedMediaChunkRpc(uploadId, chunkIndex, chunk, CreateSharedMediaTargetParams(targetClientId));
 
                 chunksSentThisFrame++;
@@ -796,7 +996,7 @@ namespace XRMultiplayer
             CompleteSharedMediaDownloadRpc(uploadId, CreateSharedMediaTargetParams(targetClientId));
 
             if (m_LogSharedMediaSync)
-                Utils.Log($"Shared media relayed: {fileName} ({combinedImageBytes.Length} bytes, {totalChunks} chunks at {chunkSize} bytes/chunk).");
+                Utils.Log($"Shared media relayed: {fileName} [{kind}/{mime}] ({combinedMediaBytes.Length} bytes, {totalChunks} chunks at {chunkSize} bytes/chunk).");
         }
 
         RpcParams CreateSharedMediaTargetParams(ulong? targetClientId)
@@ -824,9 +1024,16 @@ namespace XRMultiplayer
         }
 
         [Rpc(SendTo.SpecifiedInParams)]
-        void BeginSharedMediaDownloadRpc(ulong uploadId, FixedString128Bytes fileName, int totalBytes, int totalChunks, RpcParams rpcParams = default)
+        void BeginSharedMediaDownloadRpc(
+            ulong uploadId,
+            FixedString128Bytes fileName,
+            FixedString32Bytes kind,
+            FixedString32Bytes mime,
+            int totalBytes,
+            int totalChunks,
+            RpcParams rpcParams = default)
         {
-            m_PendingClientSharedMediaDownloads[uploadId] = new PendingSharedMediaUpload(fileName, totalBytes, totalChunks);
+            m_PendingClientSharedMediaDownloads[uploadId] = new PendingSharedMediaUpload(fileName, kind, mime, totalBytes, totalChunks);
         }
 
         [Rpc(SendTo.SpecifiedInParams)]
@@ -869,21 +1076,32 @@ namespace XRMultiplayer
 
             m_PendingClientSharedMediaDownloads.Remove(uploadId);
 
-            byte[] combinedImageBytes = pendingUpload.Combine();
-            CacheLatestSharedMedia(pendingUpload.fileName, combinedImageBytes);
+            byte[] combinedMediaBytes = pendingUpload.Combine();
+            CacheLatestSharedMedia(pendingUpload.fileName, pendingUpload.kind, pendingUpload.mime, combinedMediaBytes);
 
             if (IsOwner && m_LocalSharedMediaEchoSkips.Remove(uploadId))
                 return;
 
-            if (onSharedMediaReceived == null)
+            bool isImagePayload = IsSharedMediaImage(pendingUpload.kind, pendingUpload.mime);
+            bool invokedListener = false;
+
+            if (onSharedMediaPayloadReceived != null)
+            {
+                onSharedMediaPayloadReceived.Invoke(pendingUpload.fileName.ToString(), pendingUpload.kind.ToString(), pendingUpload.mime.ToString(), combinedMediaBytes);
+                invokedListener = true;
+            }
+
+            if (isImagePayload && onSharedMediaReceived != null)
+            {
+                onSharedMediaReceived.Invoke(pendingUpload.fileName.ToString(), combinedMediaBytes);
+                invokedListener = true;
+            }
+
+            if (!invokedListener)
             {
                 if (m_LogSharedMediaSync)
                     Utils.Log($"Shared media received with no scene listener: {pendingUpload.fileName}", 1);
-
-                return;
             }
-
-            onSharedMediaReceived.Invoke(pendingUpload.fileName.ToString(), combinedImageBytes);
         }
 
         /// <summary>

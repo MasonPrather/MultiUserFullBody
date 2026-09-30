@@ -61,7 +61,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
   m_Color: {r: 0.3301887, g: 0.3301887, b: 0.3301887, a: 0.88235295}
@@ -136,7 +136,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1344c3c82d62a2a41a3576d8abb8e3ea, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -165,6 +165,7 @@ GameObject:
   - component: {fileID: 841189091437892006}
   - component: {fileID: 4285292166269161922}
   - component: {fileID: 4537330758892825552}
+  - component: {fileID: 6123456789012345678}
   - component: {fileID: 7042810410431920601}
   m_Layer: 0
   m_Name: MediaUploadSetup
@@ -321,7 +322,32 @@ MonoBehaviour:
   refreshRawImageLayoutAfterFrame: 1
   rawImageFitMargins: {x: 0, y: 0, z: 0, w: 0}
   fallbackTexture: {fileID: 10309, guid: 0000000000000000f000000000000000, type: 0}
+  autoPlayVideos: 1
+  loopVideos: 1
+  fallbackVideoWidth: 1280
+  fallbackVideoHeight: 720
+  notificationAudio: {fileID: 6123456789012345678}
+  newImageNotificationClip: {fileID: 8300000, guid: b1c8e6d9f2a54c609a3d0a27f95c1111, type: 3}
+  newVideoNotificationClip: {fileID: 8300000, guid: c6f41b2e97f64f9ba6d830e2b56a2222, type: 3}
+  playLocalNotifications: 1
   verboseLogging: 1
+--- !u!114 &6123456789012345678
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 361362682465224878}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a3f4e7c0f87f4e34a5a4c3a0e2c40111, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::M_LocalMediaNotificationAudio
+  newImageClip: {fileID: 8300000, guid: b1c8e6d9f2a54c609a3d0a27f95c1111, type: 3}
+  newVideoClip: {fileID: 8300000, guid: c6f41b2e97f64f9ba6d830e2b56a2222, type: 3}
+  volume: 1
+  duplicateWindowSeconds: 1.5
+  notificationAudioSource: {fileID: 0}
 --- !u!1 &668785657669497770
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,7 +1,7 @@
 /*
  * Script Name: M_SessionMediaCache.cs
  * Description: Per-lobby cache for shared media that should not silently become permanent gallery media.
- * Project Role: Enforces the privacy rule that received photos stay temporary until the user explicitly saves them.
+ * Project Role: Enforces the privacy rule that received media stays temporary until the user explicitly saves it.
  */
 
 using System;
@@ -51,9 +51,9 @@ public class M_SessionMediaCache : MonoBehaviour
         CreateDirectories();
     }
 
-    public bool HasVerifiedFile(string identitySha256, M_MediaTransferFileRole role, bool hostCache, string expectedSha256 = null)
+    public bool HasVerifiedFile(string identitySha256, M_MediaTransferFileRole role, bool hostCache, string expectedSha256 = null, string mime = null)
     {
-        string path = GetCachePath(identitySha256, role, hostCache);
+        string path = GetCachePath(identitySha256, role, hostCache, mime);
         if (!File.Exists(path))
             return false;
 
@@ -64,24 +64,24 @@ public class M_SessionMediaCache : MonoBehaviour
         return string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase);
     }
 
-    public bool TryGetCachedPath(string identitySha256, M_MediaTransferFileRole role, bool preferHostCache, out string path)
+    public bool TryGetCachedPath(string identitySha256, M_MediaTransferFileRole role, bool preferHostCache, out string path, string mime = null)
     {
         EnsureInitialized();
-        path = GetCachePath(identitySha256, role, preferHostCache);
+        path = GetCachePath(identitySha256, role, preferHostCache, mime);
         if (File.Exists(path))
             return true;
 
-        path = GetCachePath(identitySha256, role, !preferHostCache);
+        path = GetCachePath(identitySha256, role, !preferHostCache, mime);
         return File.Exists(path);
     }
 
-    public string GetCachePath(string identitySha256, M_MediaTransferFileRole role, bool hostCache)
+    public string GetCachePath(string identitySha256, M_MediaTransferFileRole role, bool hostCache, string mime = null)
     {
         EnsureInitialized();
         string safeSha = M_MediaPaths.SafeIdFragment(identitySha256);
         string root = hostCache ? HostCacheRootPath : ReceivedRootPath;
-        string directory = role == M_MediaTransferFileRole.Thumbnail ? "thumbs" : "images";
-        string suffix = role == M_MediaTransferFileRole.Thumbnail ? "_thumb.jpg" : ".jpg";
+        string directory = GetRoleDirectory(role, mime);
+        string suffix = GetRoleSuffix(role, mime);
         return Path.Combine(root, directory, safeSha + suffix);
     }
 
@@ -94,7 +94,7 @@ public class M_SessionMediaCache : MonoBehaviour
         return Path.Combine(directory, $"{M_MediaPaths.SafeIdFragment(transferId)}_{role}_{Guid.NewGuid():N}.tmp");
     }
 
-    public bool StoreVerifiedTemp(string tempPath, string identitySha256, string expectedContentSha256, M_MediaTransferFileRole role, bool hostCache, out string finalPath, out string failureReason)
+    public bool StoreVerifiedTemp(string tempPath, string identitySha256, string expectedContentSha256, M_MediaTransferFileRole role, bool hostCache, out string finalPath, out string failureReason, string mime = null)
     {
         finalPath = null;
         failureReason = null;
@@ -115,7 +115,7 @@ public class M_SessionMediaCache : MonoBehaviour
                 return false;
             }
 
-            finalPath = GetCachePath(identitySha256, role, hostCache);
+            finalPath = GetCachePath(identitySha256, role, hostCache, mime);
             Directory.CreateDirectory(Path.GetDirectoryName(finalPath));
             if (File.Exists(finalPath))
                 File.Delete(finalPath);
@@ -131,7 +131,7 @@ public class M_SessionMediaCache : MonoBehaviour
         }
     }
 
-    public bool CopyIntoCache(string sourcePath, string identitySha256, M_MediaTransferFileRole role, bool hostCache, out string finalPath, out string contentSha256)
+    public bool CopyIntoCache(string sourcePath, string identitySha256, M_MediaTransferFileRole role, bool hostCache, out string finalPath, out string contentSha256, string mime = null)
     {
         finalPath = null;
         contentSha256 = null;
@@ -142,7 +142,7 @@ public class M_SessionMediaCache : MonoBehaviour
                 return false;
 
             contentSha256 = M_MediaHashUtility.Sha256HexForFile(sourcePath);
-            finalPath = GetCachePath(identitySha256, role, hostCache);
+            finalPath = GetCachePath(identitySha256, role, hostCache, mime);
             Directory.CreateDirectory(Path.GetDirectoryName(finalPath));
             File.Copy(sourcePath, finalPath, true);
 
@@ -200,11 +200,31 @@ public class M_SessionMediaCache : MonoBehaviour
     private void CreateDirectories()
     {
         Directory.CreateDirectory(Path.Combine(ReceivedRootPath, "images"));
+        Directory.CreateDirectory(Path.Combine(ReceivedRootPath, "videos"));
         Directory.CreateDirectory(Path.Combine(ReceivedRootPath, "thumbs"));
         Directory.CreateDirectory(Path.Combine(ReceivedRootPath, "temp"));
         Directory.CreateDirectory(Path.Combine(HostCacheRootPath, "images"));
+        Directory.CreateDirectory(Path.Combine(HostCacheRootPath, "videos"));
         Directory.CreateDirectory(Path.Combine(HostCacheRootPath, "thumbs"));
         Directory.CreateDirectory(Path.Combine(HostCacheRootPath, "temp"));
+    }
+
+    private static string GetRoleDirectory(M_MediaTransferFileRole role, string mime)
+    {
+        if (role == M_MediaTransferFileRole.Thumbnail)
+            return "thumbs";
+
+        return M_MediaTypeUtility.IsVideoMime(mime) ? "videos" : "images";
+    }
+
+    private static string GetRoleSuffix(M_MediaTransferFileRole role, string mime)
+    {
+        if (role == M_MediaTransferFileRole.Thumbnail)
+            return "_thumb.jpg";
+
+        return M_MediaTypeUtility.IsVideoMime(mime)
+            ? M_MediaTypeUtility.ExtensionForMime(mime)
+            : ".jpg";
     }
 
     private static string BuildRuntimeSessionId()

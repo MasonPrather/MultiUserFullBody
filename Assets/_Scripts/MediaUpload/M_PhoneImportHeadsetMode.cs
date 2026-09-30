@@ -2,7 +2,7 @@
  * Script Name: M_PhoneImportHeadsetMode.cs
  * Author: Mason Prather
  * Description: Presents the headset-side phone import prompt, displays upload URLs and pairing code, manages optional passthrough pairing mode, and restores scene visibility when pairing closes.
- * Project Role: Headset-on pairing workflow for the phone photo upload path in PhonePhotoUpload scenes.
+ * Project Role: Headset-on pairing workflow for the phone media upload path in PhonePhotoUpload scenes.
  * Key Inputs: M_ServerBootstrap published instructions, phone upload bridge state, XR camera pose, passthrough controller state, and serialized prompt/environment references.
  * Key Outputs: Pairing prompt text, optional generated world-space UI, passthrough toggles, temporary scene isolation, and restored renderer/camera state.
  */

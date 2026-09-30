@@ -2,7 +2,7 @@
  * Script Name: M_ServerBootstrap.cs
  * Author: Mason Prather
  * Description: Starts the local HTTP upload server, starts UDP discovery beacons, generates the pairing code, resolves local phone URLs, and publishes headset instructions.
- * Project Role: Bootstrap component for the no-install phone photo upload flow.
+ * Project Role: Bootstrap component for the no-install phone media upload flow.
  * Key Inputs: HTTP/discovery ports, persistent upload path, pairing-code settings, local network interfaces, and optional instruction TMP labels.
  * Key Outputs: Running HTTP server, discovery component, published upload URLs, pairing instructions, and status logs.
  */

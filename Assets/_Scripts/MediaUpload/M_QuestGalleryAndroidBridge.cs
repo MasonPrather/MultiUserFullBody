@@ -1,7 +1,7 @@
 /*
  * Script Name: M_QuestGalleryAndroidBridge.cs
  * Author: Mason Prather
- * Description: Queries Quest/Android media sources, app-owned import folders, and supported image files, then loads thumbnails and full-resolution textures for the media gallery.
+ * Description: Queries Quest/Android media sources, app-owned import folders, and supported media files, then loads thumbnails and full-resolution textures for the media gallery.
  * Project Role: Platform bridge beneath the Quest media gallery browser and import diagnostics.
  * Key Inputs: Android permissions, MediaStore results, shared storage folders, app-owned import folders, content URIs, and filesystem paths.
  * Key Outputs: GalleryItem lists, thumbnail textures, loaded image textures, imported file records, deletion results, and diagnostic logs.
@@ -17,14 +17,14 @@ using UnityEngine.Android;
 /// <summary>
 /// Quest / Android-side helper for:
 /// - Requesting media/storage permission.
-/// - Querying Android MediaStore for gallery-visible images.
+/// - Querying Android MediaStore for gallery-visible media.
 /// - Finding common gallery folders on device storage as a fallback.
-/// - Scanning for supported image files.
+/// - Scanning for supported media files.
 /// - Loading thumbnails and full-size textures from file paths or content URIs.
 /// </summary>
 public class M_QuestGalleryAndroidBridge : MonoBehaviour
 {
-    private static readonly string[] BuiltInSupportedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif" };
+    private static readonly string[] BuiltInSupportedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".mp4", ".mov", ".m4v", ".webm" };
     private static readonly string[] AndroidBitmapFallbackExtensions = { ".heic", ".heif", ".webp", ".bmp" };
     private static readonly string[] HorizonProbeKeywords = { "horizon", "com.oculus.horizon", "com.meta.horizon", "com.facebook.horizon", "meta horizon" };
 
@@ -48,14 +48,14 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
     [Tooltip("If true, skip Android MediaStore and only use filesystem folder scanning.")]
     public bool disableMediaStoreQuery = false;
 
-    [Tooltip("Maximum number of image files to return after sorting.")]
+    [Tooltip("Maximum number of media files to return after sorting.")]
     public int maxItems = 200;
 
     [Tooltip("If true, sort newest files first.")]
     public bool newestFirst = true;
 
     [Tooltip("Supported file extensions.")]
-    public string[] supportedExtensions = new string[] { ".jpg", ".jpeg", ".png", ".webp" };
+    public string[] supportedExtensions = new string[] { ".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".m4v", ".webm" };
 
     [Tooltip("Folder names to skip during recursive scanning.")]
     public string[] skippedFolderNames = new string[] { ".thumbnails", "Android", "obb", "data", "cache" };
@@ -68,7 +68,7 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
     public bool thumbnailsReadable = false;
 
     [Header("Imports")]
-    [Tooltip("App-owned subfolder used for images imported from Android shares and the device picker.")]
+    [Tooltip("App-owned subfolder used for media imported from Android shares and the device picker.")]
     public string importedMediaFolderName = "ImportedSharedMedia";
 
     [Tooltip("App-owned subfolder used by the no-install phone upload web page.")]
@@ -78,7 +78,7 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
     [Tooltip("If true, log detailed scan / load information.")]
     public bool verboseLogging = true;
 
-    [Tooltip("If true, log every supported image that gets added.")]
+    [Tooltip("If true, log every supported media item that gets added.")]
     public bool logEachAddedImage = false;
 
     [Tooltip("If true, emit a compact scan summary with likely Horizon/Meta matches after each gallery refresh.")]
@@ -117,11 +117,12 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
 #if UNITY_ANDROID && !UNITY_EDITOR
         bool hasReadExternal = Permission.HasUserAuthorizedPermission(Permission.ExternalStorageRead);
         bool hasReadMediaImages = Permission.HasUserAuthorizedPermission("android.permission.READ_MEDIA_IMAGES");
+        bool hasReadMediaVideo = Permission.HasUserAuthorizedPermission("android.permission.READ_MEDIA_VIDEO");
 
         if (verboseLogging)
-            Debug.Log($"[M_QuestGalleryAndroidBridge] HasMediaPermission -> ExternalStorageRead={hasReadExternal}, READ_MEDIA_IMAGES={hasReadMediaImages}");
+            Debug.Log($"[M_QuestGalleryAndroidBridge] HasMediaPermission -> ExternalStorageRead={hasReadExternal}, READ_MEDIA_IMAGES={hasReadMediaImages}, READ_MEDIA_VIDEO={hasReadMediaVideo}");
 
-        return hasReadExternal || hasReadMediaImages;
+        return hasReadExternal || hasReadMediaImages || hasReadMediaVideo;
 #else
         return true;
 #endif
@@ -142,6 +143,9 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
         if (!Permission.HasUserAuthorizedPermission("android.permission.READ_MEDIA_IMAGES"))
             Permission.RequestUserPermission("android.permission.READ_MEDIA_IMAGES");
 
+        if (!Permission.HasUserAuthorizedPermission("android.permission.READ_MEDIA_VIDEO"))
+            Permission.RequestUserPermission("android.permission.READ_MEDIA_VIDEO");
+
         float timeout = 5f;
         float timer = 0f;
 
@@ -159,7 +163,7 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
     }
 
     /// <summary>
-    /// Scans Quest-accessible folders for supported image files.
+    /// Scans Quest-accessible folders for supported media files.
     /// </summary>
     public List<GalleryItem> GetGalleryItems()
     {
@@ -218,13 +222,13 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
         if (maxItems > 0 && items.Count > maxItems)
         {
             if (verboseLogging)
-                Debug.Log($"[M_QuestGalleryAndroidBridge] Truncating image list from {items.Count} to maxItems={maxItems}.");
+                Debug.Log($"[M_QuestGalleryAndroidBridge] Truncating media list from {items.Count} to maxItems={maxItems}.");
 
             items = items.GetRange(0, maxItems);
         }
 
         if (verboseLogging)
-            Debug.Log($"[M_QuestGalleryAndroidBridge] Found {items.Count} image(s). MediaStore={mediaStoreCount}, Filesystem={Mathf.Max(0, items.Count - mediaStoreCount)}");
+            Debug.Log($"[M_QuestGalleryAndroidBridge] Found {items.Count} media item(s). MediaStore={mediaStoreCount}, Filesystem={Mathf.Max(0, items.Count - mediaStoreCount)}");
 
         if (logGalleryDiagnostics)
             LogGalleryDiagnostics(items, mediaStoreCount, roots, rootAddedCounts);
@@ -234,6 +238,9 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
 
     public Texture2D LoadThumbnailTexture(GalleryItem item)
     {
+        if (IsVideoItem(item))
+            return CreateVideoPlaceholderTexture();
+
         return LoadTextureFromGalleryItem(item, thumbnailMaxDimension, thumbnailsReadable);
     }
 
@@ -251,6 +258,9 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
 
     public Texture2D LoadFullTexture(GalleryItem item, int maxDimension = 0, bool markNonReadable = false)
     {
+        if (IsVideoItem(item))
+            return CreateVideoPlaceholderTexture();
+
         return LoadTextureFromGalleryItem(item, maxDimension, !markNonReadable);
     }
 
@@ -632,6 +642,38 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
         return false;
     }
 
+    private bool IsSupportedVideoFile(string filePath)
+    {
+        string ext = Path.GetExtension(filePath);
+        return string.Equals(ext, ".mp4", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(ext, ".mov", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(ext, ".m4v", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(ext, ".webm", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private Texture2D CreateVideoPlaceholderTexture()
+    {
+        byte[] jpg = M_MediaThumbnailGenerator.EncodeVideoPlaceholderJpg(
+            Mathf.Max(64, thumbnailMaxDimension),
+            78,
+            out _,
+            out _);
+
+        if (jpg == null || jpg.Length == 0)
+            return null;
+
+        Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        if (!texture.LoadImage(jpg, !thumbnailsReadable))
+        {
+            Destroy(texture);
+            return null;
+        }
+
+        texture.wrapMode = TextureWrapMode.Clamp;
+        texture.filterMode = FilterMode.Bilinear;
+        return texture;
+    }
+
     private bool ShouldSkipFolder(string folderPath)
     {
         if (string.IsNullOrEmpty(folderPath))
@@ -956,7 +998,9 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
         if (IsSupportedImageFile(fileName))
             return true;
 
-        return !string.IsNullOrWhiteSpace(mimeType) && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        return !string.IsNullOrWhiteSpace(mimeType)
+               && (mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                   || mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase));
     }
 
     private bool TryAddGalleryItem(List<GalleryItem> items, HashSet<string> seenItems, GalleryItem item)
@@ -987,6 +1031,17 @@ public class M_QuestGalleryAndroidBridge : MonoBehaviour
             return "uri:" + item.contentUri.Trim();
 
         return "meta:" + (item.fileName ?? string.Empty) + "|" + item.fileSizeBytes + "|" + item.lastWriteTicks;
+    }
+
+    public bool IsVideoItem(GalleryItem item)
+    {
+        if (item == null)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(item.mimeType) && item.mimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return IsSupportedVideoFile(item.filePath) || IsSupportedVideoFile(item.fileName);
     }
 
     private string CreateUniqueImportPath(string folderPath, string fileName)

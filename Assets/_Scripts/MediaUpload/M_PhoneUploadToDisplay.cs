@@ -90,10 +90,12 @@ public class M_PhoneUploadToDisplay : MonoBehaviour
         ResolveReferences();
 
         if (statusText != null)
-            statusText.text = "Loading phone photo...";
+            statusText.text = "Loading phone media...";
 
         byte[] bytes = null;
         Exception readException = null;
+        bool isVideo = IsVideoPath(path);
+        bool fileReady = false;
 
         int attempts = Mathf.Max(0, maxLoadRetries) + 1;
         for (int attempt = 0; attempt < attempts; attempt++)
@@ -102,30 +104,63 @@ public class M_PhoneUploadToDisplay : MonoBehaviour
 
             try
             {
-                if (File.Exists(path))
-                    bytes = File.ReadAllBytes(path);
+                if (File.Exists(path) && new FileInfo(path).Length > 0)
+                {
+                    fileReady = true;
+                    if (!isVideo)
+                        bytes = File.ReadAllBytes(path);
+                }
             }
             catch (Exception ex)
             {
                 readException = ex;
             }
 
-            if (bytes != null && bytes.Length > 0)
+            if (isVideo && fileReady)
+                break;
+
+            if (!isVideo && bytes != null && bytes.Length > 0)
                 break;
 
             if (attempt < attempts - 1)
                 yield return new WaitForSeconds(Mathf.Max(0.01f, retryDelaySeconds));
         }
 
-        if (bytes == null || bytes.Length == 0)
+        if (!fileReady || (!isVideo && (bytes == null || bytes.Length == 0)))
         {
             if (statusText != null)
-                statusText.text = "Phone photo could not be loaded.";
+                statusText.text = "Phone media could not be loaded.";
 
             if (readException != null)
                 Debug.LogWarning($"[M_PhoneUploadToDisplay] Failed to read upload '{path}': {readException.Message}");
             else
                 Debug.LogWarning($"[M_PhoneUploadToDisplay] Uploaded file was missing or empty: {path}");
+
+            _loadCoroutine = null;
+            yield break;
+        }
+
+        if (isVideo)
+        {
+            if (photoDisplay != null)
+            {
+                string fileName = Path.GetFileName(path);
+                photoDisplay.DisplayVideo(path, fileName);
+                RefreshGalleryForUpload(path);
+
+                if (broadcastUploadsToConnectedUsers)
+                    BroadcastPhoneVideo(path, fileName);
+
+                if (verboseLogging)
+                    Debug.Log($"[M_PhoneUploadToDisplay] Displayed phone video upload: {path}");
+            }
+            else
+            {
+                if (statusText != null)
+                    statusText.text = "Phone video saved, but no display target was found.";
+
+                Debug.LogWarning("[M_PhoneUploadToDisplay] No M_QuestPhotoDisplay found in the scene.");
+            }
 
             _loadCoroutine = null;
             yield break;
@@ -228,6 +263,19 @@ public class M_PhoneUploadToDisplay : MonoBehaviour
         networkedPhotoSync.BroadcastImageBytes(fileName, bytes);
     }
 
+    private void BroadcastPhoneVideo(string path, string fileName)
+    {
+        ResolveReferences();
+
+        if (networkedPhotoSync == null)
+        {
+            Debug.LogWarning("[M_PhoneUploadToDisplay] Phone video displayed locally, but no M_NetworkedPhotoSync was found for broadcast.");
+            return;
+        }
+
+        networkedPhotoSync.BroadcastVideoFile(path, fileName);
+    }
+
     private void RefreshGalleryForUpload(string path)
     {
         ResolveReferences();
@@ -255,5 +303,11 @@ public class M_PhoneUploadToDisplay : MonoBehaviour
         }
 
         return null;
+    }
+
+    private static bool IsVideoPath(string path)
+    {
+        string mime = M_MediaTypeUtility.NormalizeMime(null, path, null);
+        return M_MediaTypeUtility.IsSupportedVideoMime(mime);
     }
 }

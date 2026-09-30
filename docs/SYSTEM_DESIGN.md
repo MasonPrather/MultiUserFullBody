@@ -2,13 +2,13 @@
 
 ## System Purpose
 
-MultiUserFullBody is a Unity-based research prototype for multi-user immersive interaction. It combines networked Ready Player Me avatars, Quest/OVR tracking, optional face-expression experiments, Vivox voice, local media import, no-install phone photo upload, and shared media synchronization inside a VR room.
+MultiUserFullBody is a Unity-based research prototype for multi-user immersive interaction. It combines networked Ready Player Me avatars, Quest/OVR tracking, optional face-expression experiments, Vivox voice, local media import, no-install phone media upload, and shared media synchronization inside a VR room.
 
 ## Design Goals
 
 - Support multi-user avatar presence with replicated head and hand motion.
 - Keep local avatar presentation separate from network avatar presentation so first-person rendering does not obstruct the headset view.
-- Allow phone-to-Quest photo upload over a lab Wi-Fi network without installing a phone app.
+- Allow phone-to-Quest photo and video upload over a lab Wi-Fi network without installing a phone app.
 - Make imported media visible locally first, then synchronize it to connected clients when a network player exists.
 - Preserve Quest-friendly runtime behavior by using local storage, bounded media sizes, chunked network payloads, and explicit platform checks.
 - Keep supervisor review flows understandable from scene prompts, console logs, and repository documentation.
