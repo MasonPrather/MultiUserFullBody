@@ -1,0 +1,6 @@
+{
+  "name": "MUFB.MetaAvatars",
+  "rootNamespace": "MUFB.Avatars",
+  "references": ["Oculus.AvatarSDK2", "Oculus.AvatarSDK2.Samples", "Oculus.VR", "Unity.Netcode.Runtime", "Unity.Services.Vivox", "Unity.Collections"],
+  "autoReferenced": true
+}

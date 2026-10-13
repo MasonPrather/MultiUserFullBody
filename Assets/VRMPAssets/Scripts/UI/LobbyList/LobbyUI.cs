@@ -140,6 +140,15 @@ namespace XRMultiplayer
             m_ConnectionSuccessText.text = $"Joining {m_RoomNameText.text}";
         }
 
+        // Used by the Fall 2026 copy of the PhonePhotoUpload menus.
+        public void HostPublicRoom()
+        {
+            m_Private = false;
+            m_PlayerCount = 8;
+            ToggleConnectionSubPanel(ConnectionSubPanel.ConnectionPanel);
+            CreateLobby();
+        }
+
         public void CancelConnection()
         {
             XRINetworkGameManager.Instance.CancelMatchmaking();

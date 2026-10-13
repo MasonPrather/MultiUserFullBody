@@ -13,7 +13,9 @@ using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.XR.CoreUtils.Bindings.Variables;
 using UnityEngine;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using Unity.Services.Multiplayer;
 using Unity.Netcode.Transports.UTP;
 using System.Net.Sockets;
@@ -204,6 +206,7 @@ namespace XRMultiplayer
         /// Flagged whenever the application is in the process of shutting down.
         /// </summary>
         bool m_IsShuttingDown = false;
+        bool m_ConnectionRequestInProgress;
 
         const string k_DebugPrepend = "<color=#FAC00C>[Network Game Manager]</color> ";
 
@@ -516,14 +519,14 @@ namespace XRMultiplayer
         protected virtual async Task<bool> AbleToConnect()
         {
             // If in the process of trying to connect, send failure message and return false.
-            if (m_ConnectionState.Value == ConnectionState.Connecting)
+            if (m_ConnectionRequestInProgress || m_ConnectionState.Value == ConnectionState.Connecting)
             {
                 string failureMessage = "Connection attempt still in progress.";
                 Utils.Log($"{k_DebugPrepend}{failureMessage}", 1);
-                ConnectionFailed(failureMessage);
                 return false;
             }
 
+            m_ConnectionRequestInProgress = true;
             // If already connected to a lobby, disconnect in attempt to "Hot Join".
             if (Connected.Value || m_ConnectionState.Value == ConnectionState.Connected)
             {
@@ -536,6 +539,13 @@ namespace XRMultiplayer
             }
 
             m_ConnectionState.Value = ConnectionState.Connecting;
+            if (CurrentSessionType == SessionType.DistributedAuthority &&
+                !await m_AuthenticationManager.Authenticate())
+            {
+                m_ConnectionRequestInProgress = false;
+                ConnectionFailed("Sign-in failed. Check Wi-Fi and try again.");
+                return false;
+            }
             return true;
         }
 
@@ -545,10 +555,12 @@ namespace XRMultiplayer
         /// <param name="session">Lobby to connect to.</param>
         protected virtual void ConnectToSession(ISession session)
         {
+            m_ConnectionRequestInProgress = false;
             // Send failure message if we can't connect.
             if (session == null)
             {
-                FailedToConnect();
+                if (m_ConnectionState.Value == ConnectionState.Connecting)
+                    FailedToConnect(m_SessionManager.lastFailureReason);
             }
             else
             {
@@ -569,6 +581,7 @@ namespace XRMultiplayer
                 failureMessage = $"{reason}";
             }
             Utils.Log($"{k_DebugPrepend}{failureMessage}", 1);
+            ConnectionFailed(failureMessage);
         }
 
         /// <summary>

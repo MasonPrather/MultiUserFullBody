@@ -19,6 +19,8 @@ namespace Meta.XR.MultiplayerBlocks.Shared
     {
         [Header("References")]
         [SerializeField] private CustomMatchmaking matchmaking;
+        [Tooltip("Use the shared voice/menu sign-in task. Disable matchmaking's automatic sign-in when enabled.")]
+        [SerializeField] private bool initializeAuthenticationBeforeMatchmaking;
 
         [Header("UI/Flow")]
         [SerializeField] private string gameplayScene = "Game";
@@ -91,6 +93,8 @@ namespace Meta.XR.MultiplayerBlocks.Shared
 
             try
             {
+                if (initializeAuthenticationBeforeMatchmaking)
+                    await M_VivoxManager.EnsureAuthenticationAsync();
                 matchmaking.LobbyName = string.IsNullOrWhiteSpace(lobbyName) ? "myLobby" : lobbyName;
                 matchmaking.MaxPlayersPerRoom = maxPlayers;
                 matchmaking.IsPrivate = isPrivate;
@@ -122,6 +126,8 @@ namespace Meta.XR.MultiplayerBlocks.Shared
 
             try
             {
+                if (initializeAuthenticationBeforeMatchmaking)
+                    await M_VivoxManager.EnsureAuthenticationAsync();
                 var lobby = string.IsNullOrWhiteSpace(lobbyName) ? matchmaking.LobbyName : lobbyName;
                 if (string.IsNullOrWhiteSpace(lobby)) lobby = "myLobby";
 
@@ -243,9 +249,17 @@ namespace Meta.XR.MultiplayerBlocks.Shared
 
         private IEnumerator JoinVivoxWhenReady(string channel)
         {
-            yield return new WaitUntil(() =>
-                M_VivoxManager.Instance != null && M_VivoxManager.Instance.IsReady
-            );
+            yield return new WaitUntil(() => M_VivoxManager.Instance != null);
+            // Retry voice startup after a successful room operation if the first
+            // attempt failed (for example while Wi-Fi was still connecting).
+            var initialization = M_VivoxManager.Instance.InitializeVivoxAsync();
+            yield return new WaitUntil(() => initialization.IsCompleted);
+            if (initialization.IsFaulted)
+            {
+                Debug.LogWarning($"[Vivox] Unable to initialize voice: {initialization.Exception.GetBaseException().Message}");
+                yield break;
+            }
+            if (initialization.IsCanceled) yield break;
             M_VivoxManager.Instance.JoinChannel(channel);
         }
 

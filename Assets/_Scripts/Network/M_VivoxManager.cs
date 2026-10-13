@@ -30,6 +30,7 @@ public class M_VivoxManager : MonoBehaviour
     public event System.Action<string> ChannelLeft;
 
     static Task _initTask;
+    static Task _authenticationTask;
     static bool _initialized;
     bool _isLoggedIn;
 
@@ -42,7 +43,8 @@ public class M_VivoxManager : MonoBehaviour
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
-        await InitializeVivoxAsync();
+        try { await InitializeVivoxAsync(); }
+        catch (System.Exception e) { Debug.LogError($"[Vivox] Startup failed: {e.Message}"); }
     }
 
     private async void OnApplicationQuit()
@@ -56,23 +58,67 @@ public class M_VivoxManager : MonoBehaviour
         if (_initTask != null) { await _initTask; return; }
 
         _initTask = InitializeInternalAsync();
-        await _initTask;
-        _initialized = true;
+        try
+        {
+            await _initTask;
+            _initialized = true;
+        }
+        finally { _initTask = null; }
     }
 
     static bool AlreadySigningInError(System.Exception ex)
         => ex != null && (ex.Message?.ToLowerInvariant().Contains("already signing in") ?? false);
 
-    async Task InitializeInternalAsync()
+    // The Quest demo disables the SDK's separate automatic sign-in. Voice and
+    // Host/Join share this task so a quick menu click also waits for authentication.
+    public static Task EnsureAuthenticationAsync()
+    {
+        if (_authenticationTask == null || _authenticationTask.IsCompleted)
+            _authenticationTask = AuthenticateAsync();
+        return _authenticationTask;
+    }
+
+    static async Task AuthenticateAsync()
     {
         if (UnityServices.State != ServicesInitializationState.Initialized)
             await UnityServices.InitializeAsync();
 
         if (!AuthenticationService.Instance.IsSignedIn)
         {
-            try { await AuthenticationService.Instance.SignInAnonymouslyAsync(); }
-            catch (System.Exception ex) { if (!AlreadySigningInError(ex)) throw; }
+            var signedIn = new TaskCompletionSource<RequestFailedException>();
+            void OnSignedIn() => signedIn.TrySetResult(null);
+            void OnFailed(RequestFailedException error)
+            {
+                // This event also fires when our request finds another sign-in
+                // in progress; only the actual sign-in result should finish the wait.
+                if (!AlreadySigningInError(error)) signedIn.TrySetResult(error);
+            }
+            AuthenticationService.Instance.SignedIn += OnSignedIn;
+            AuthenticationService.Instance.SignInFailed += OnFailed;
+            try
+            {
+                try { await AuthenticationService.Instance.SignInAnonymouslyAsync(); }
+                catch (System.Exception ex) when (AlreadySigningInError(ex))
+                {
+                    // Older scenes may still have the SDK's automatic sign-in.
+                    // Wait for its result instead of attempting Vivox login early.
+                    if (await Task.WhenAny(signedIn.Task, Task.Delay(30000)) != signedIn.Task)
+                        throw new System.TimeoutException("Unity Services sign-in timed out.");
+                    var error = await signedIn.Task;
+                    if (error != null) throw error;
+                }
+            }
+            finally
+            {
+                AuthenticationService.Instance.SignedIn -= OnSignedIn;
+                AuthenticationService.Instance.SignInFailed -= OnFailed;
+            }
         }
+    }
+
+    async Task InitializeInternalAsync()
+    {
+        await EnsureAuthenticationAsync();
 
         await VivoxService.Instance.InitializeAsync();
 

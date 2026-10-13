@@ -147,6 +147,7 @@ StyleCopReport.xml
 *_h.h
 *.ilk
 *.meta
+!Assets/Circular Conference Room/materials/screen.mat.meta
 !Assets/Audio.meta
 !Assets/Audio/*.mp3.meta
 !Assets/_Prefabs/MediaUploadSetup.prefab.meta
@@ -495,3 +496,10 @@ Assets/Oculus/LipSync/Plugins/MacOSX/
 # Additional files built by Visual Studio
 
 # End of https://www.toptal.com/developers/gitignore/api/unity,visualstudio
+
+# Keep GUIDs for the independent Meta Avatars scene and its imported SDK support.
+!Assets/_MetaAvatarsFall2026.meta
+!Assets/_MetaAvatarsFall2026/**/*.meta
+!Assets/StreamingAssets/MUFBAvatars_Fall2026.meta
+!Assets/StreamingAssets/MUFBAvatars_Fall2026/**/*.meta
+!Assets/_Scenes/MUFBAvatars_Fall2026.unity.meta

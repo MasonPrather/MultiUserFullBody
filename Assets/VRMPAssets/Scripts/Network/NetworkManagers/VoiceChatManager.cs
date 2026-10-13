@@ -15,6 +15,7 @@ using Unity.XR.CoreUtils.Bindings.Variables;
 using UnityEngine;
 using UnityEngine.Android;
 using System.Collections;
+using System.Threading.Tasks;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -145,6 +146,9 @@ namespace XRMultiplayer
         /// If the voice chat service is initialized.
         /// </summary>
         bool m_IsInitialized;
+        Task<bool> m_InitializationTask;
+        Task m_VoiceOperation = Task.CompletedTask;
+        int m_VoiceGeneration;
         const string k_DebugPrepend = "<color=#0CFAFA>[Voice Chat Manager]</color> ";
         ///<inheritdoc/>
         private void Awake()
@@ -165,9 +169,9 @@ namespace XRMultiplayer
         ///<inheritdoc/>
         private void OnDestroy()
         {
+            ++m_VoiceGeneration;
             if (VivoxService.Instance != null)
             {
-                VivoxService.Instance.LoggedIn -= LocalUserLoggedIn;
                 UnbindParticipantEvents();
             }
 
@@ -185,16 +189,9 @@ namespace XRMultiplayer
         /// <param name="connected">Wether or not a player is connected.</param>
         void ConnectedToGame(bool connected)
         {
-            if (!m_IsInitialized) return;
-
-            if (connected)
-            {
-                Login();
-            }
-            else
-            {
-                LogOut();
-            }
+            string room = connected ? XRINetworkGameManager.Instance.sessionManager.currentSession?.Id : null;
+            int generation = ++m_VoiceGeneration;
+            m_VoiceOperation = UpdateVoiceSession(m_VoiceOperation, room, generation);
         }
 
         void ConnectionStateUpdated(XRINetworkGameManager.ConnectionState connectionState)
@@ -203,8 +200,7 @@ namespace XRMultiplayer
             {
                 Utils.Log($"{k_DebugPrepend}Initializing Voice Chat");
                 m_ConnectionStatus.Value = "Initializing Voice Service";
-                m_IsInitialized = true;
-                EnableVoiceChat();
+                _ = EnsureInitialized();
                 if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
                 {
                     StartCoroutine(ShowPermissionsAfterDelay());
@@ -250,14 +246,22 @@ namespace XRMultiplayer
             PlayerHudNotification.Instance.ShowText("Microphone Permissions Granted", 3.0f);
         }
 
-        async void EnableVoiceChat()
+        Task<bool> EnsureInitialized()
+        {
+            if (m_InitializationTask == null || (m_InitializationTask.IsCompleted && !m_IsInitialized))
+                m_InitializationTask = InitializeVoice();
+            return m_InitializationTask;
+        }
+
+        async Task<bool> InitializeVoice()
         {
             try
             {
                 await VivoxService.Instance.InitializeAsync();
                 m_ConnectionStatus.Value = "Voice Service Initialized";
-                VivoxService.Instance.LoggedIn += LocalUserLoggedIn;
                 BindToParticipantEvents();
+                m_IsInitialized = true;
+                return true;
             }
             catch (System.Exception e)
             {
@@ -267,6 +271,8 @@ namespace XRMultiplayer
 #else
                 Utils.Log($"{k_DebugPrepend}Vivox Initialization Failed.\n\n{e}", 2);
 #endif
+                m_ConnectionStatus.Value = "Voice initialization failed";
+                return false;
             }
         }
 
@@ -280,63 +286,41 @@ namespace XRMultiplayer
         }
 #endif
 
-        async void Login()
+        // Serialize leave/login/join so a fast Host or leave/rejoin cannot race Vivox startup.
+        async Task UpdateVoiceSession(Task previous, string room, int generation)
         {
-            var displayName = XRINetworkGameManager.AuthenicationId;
-            m_CurrentLobbyId = XRINetworkGameManager.Instance.sessionManager.currentSession.Id;
-
-            LoginOptions loginOptions = new()
+            try
             {
-                DisplayName = displayName,
-                ParticipantUpdateFrequency = m_UpdateFrequency
-            };
-
-            if (VivoxService.Instance.IsLoggedIn)
-            {
-                Utils.Log($"{k_DebugPrepend}Logging out of Voice Chat");
-                m_ConnectionStatus.Value = "Logging out of Voice Chat";
-                await VivoxService.Instance.LogoutAsync();
-            }
-
-            if (!VivoxService.Instance.IsLoggedIn)
-            {
-                Utils.Log($"{k_DebugPrepend}Logging In to room {m_CurrentLobbyId} as {displayName}");
-                m_ConnectionStatus.Value = "Logging In To Voice Service";
-                await VivoxService.Instance.LoginAsync(loginOptions);
-            }
-            else
-            {
-                Utils.Log($"{k_DebugPrepend}Attempting to login to voice chat while already logged in.", 1);
-            }
-        }
-
-        void LocalUserLoggedIn()
-        {
-            if (VivoxService.Instance.IsLoggedIn)
-            {
-                Utils.Log($"{k_DebugPrepend}Local User Logged In to Voice Chat.");
-                m_ConnectionStatus.Value = "Joining Voice Channel";
-                ConnectToVoiceChannel();
-            }
-        }
-
-        async void ConnectToVoiceChannel()
-        {
-            if (NetworkManager.Singleton.IsConnectedClient & !m_ConnectedToRoom)
-            {
-                Channel3DProperties properties = new(AudibleDistance, ConversationalDistance, AudioFadeIntensity, AudioFadeModel);
-                Utils.Log($"{k_DebugPrepend}Joining Voice Channel: {m_CurrentLobbyId}, properties: {properties}");
-                await VivoxService.Instance.JoinPositionalChannelAsync(m_CurrentLobbyId, m_ChatCapability, properties);
-
-                // Once connecting, make sure we are still in the game session, if not, disconnect from the voice chat.
-                if (!NetworkManager.Singleton.IsConnectedClient)
+                await previous;
+                if (generation != m_VoiceGeneration) return;
+                if (string.IsNullOrEmpty(room) && !m_IsInitialized) return;
+                if (!await EnsureInitialized() || generation != m_VoiceGeneration) return;
+                var voice = VivoxService.Instance;
+                m_ConnectedToRoom = false;
+                if (voice.IsLoggedIn)
                 {
-                    Disconnect();
+                    await voice.LeaveAllChannelsAsync();
+                    await voice.LogoutAsync();
                 }
+                m_PlayersDictionary.Clear();
+                if (string.IsNullOrEmpty(room) || generation != m_VoiceGeneration) return;
+                m_CurrentLobbyId = room;
+                m_ConnectionStatus.Value = "Logging In To Voice Service";
+                await voice.LoginAsync(new LoginOptions
+                {
+                    DisplayName = XRINetworkGameManager.AuthenicationId,
+                    ParticipantUpdateFrequency = m_UpdateFrequency
+                });
+                if (generation != m_VoiceGeneration) return;
+                m_ConnectionStatus.Value = "Joining Voice Channel";
+                var properties = new Channel3DProperties(AudibleDistance, ConversationalDistance, AudioFadeIntensity, AudioFadeModel);
+                await voice.JoinPositionalChannelAsync(room, m_ChatCapability, properties);
             }
-            else
+            catch (System.Exception e)
             {
-                Utils.Log($"{k_DebugPrepend}Failed to join Voice Chat, Player is not connected to a game", 1);
+                if (!this || generation != m_VoiceGeneration) return;
+                m_ConnectionStatus.Value = "Voice connection failed. Use Reconnect to retry.";
+                Utils.LogWarning($"{k_DebugPrepend}{e.Message}");
             }
         }
 
@@ -352,55 +336,16 @@ namespace XRMultiplayer
             VivoxService.Instance.ParticipantRemovedFromChannel -= OnParticipantRemoved;
         }
 
-        async void DisconnectAsync()
-        {
-            m_ConnectionStatus.Value = "Leaving current channel";
-            await VivoxService.Instance.LeaveAllChannelsAsync();
-        }
-
         [ContextMenu("Reconnect")]
         public void Reconnect()
         {
-            if (XRINetworkGameManager.CurrentSessionType == SessionType.LocalOnly)
-            {
-                Utils.Log($"{k_DebugPrepend}Cannot reconnect in Local Only session.", 1);
-                return;
-            }
-            ReconnectAsync();
-        }
-
-        async void ReconnectAsync()
-        {
-            m_ConnectionStatus.Value = "Leaving current channel";
-            await VivoxService.Instance.LeaveAllChannelsAsync();
-
-            if (VivoxService.Instance.IsLoggedIn)
-            {
-                ConnectToVoiceChannel();
-            }
-            else
-            {
-                m_ConnectionStatus.Value = "Reconnecting to Voice Chat";
-                Login();
-            }
-        }
-
-        void LogOut()
-        {
-            Utils.Log($"{k_DebugPrepend}Logging out of Voice Chat.");
-            if (VivoxService.Instance.IsLoggedIn && m_ConnectedToRoom)
-            {
-                m_ConnectedToRoom = false;
-                VivoxService.Instance.LeaveAllChannelsAsync();
-                VivoxService.Instance.LogoutAsync();
-            }
-
-            m_PlayersDictionary.Clear();
+            if (XRINetworkGameManager.CurrentSessionType == SessionType.LocalOnly || !XRINetworkGameManager.Connected.Value) return;
+            ConnectedToGame(true);
         }
 
         public void Set3DAudio(Transform localPlayerHeadTransform)
         {
-            if (VivoxService.Instance.IsLoggedIn && VivoxService.Instance.ActiveChannels.Count > 0 && VivoxService.Instance.TransmittingChannels[0] == m_CurrentLobbyId)
+            if (VivoxService.Instance.IsLoggedIn && VivoxService.Instance.ActiveChannels.Count > 0 && VivoxService.Instance.TransmittingChannels.Contains(m_CurrentLobbyId))
             {
                 VivoxService.Instance.Set3DPosition(localPlayerHeadTransform.position,
                     localPlayerHeadTransform.position,
@@ -474,7 +419,7 @@ namespace XRMultiplayer
                 m_ConnectedToRoom = true;
                 m_LocalParticpant = participant;
                 m_SelfMuted.Value = false;
-                XRINetworkPlayer.LocalPlayer.SetVoiceId(m_LocalParticpant.PlayerId);
+                if (XRINetworkPlayer.LocalPlayer) XRINetworkPlayer.LocalPlayer.SetVoiceId(m_LocalParticpant.PlayerId);
                 Utils.Log($"{k_DebugPrepend}Joined Voice Channel: {m_CurrentLobbyId}");
                 m_ConnectionStatus.Value = "Joined Voice Channel";
                 PlayerHudNotification.Instance.ShowText("Joined Voice Chat", 3.0f);
@@ -507,7 +452,8 @@ namespace XRMultiplayer
 
         public VivoxParticipant GetVivoxParticipantById(string participantPlayerId)
         {
-            foreach (var participant in VivoxService.Instance.ActiveChannels[m_CurrentLobbyId])
+            if (string.IsNullOrEmpty(m_CurrentLobbyId) || !VivoxService.Instance.ActiveChannels.TryGetValue(m_CurrentLobbyId, out var participants)) return null;
+            foreach (var participant in participants)
             {
                 if (participantPlayerId == participant.PlayerId)
                     return participant;
@@ -530,7 +476,7 @@ namespace XRMultiplayer
 
         public static void RemoveVivoxPlayer(string participantID)
         {
-            if (participantID == XRINetworkPlayer.LocalPlayer.playerVoiceId)
+            if (XRINetworkPlayer.LocalPlayer && participantID == XRINetworkPlayer.LocalPlayer.playerVoiceId)
             {
                 Utils.Log($"{k_DebugPrepend}Local Player Left Voice Chat.");
                 return;
@@ -544,7 +490,7 @@ namespace XRMultiplayer
         [ContextMenu("Disconnect")]
         public void Disconnect()
         {
-            DisconnectAsync();
+            ConnectedToGame(false);
         }
 
         [ContextMenu("Debug Particpants")]

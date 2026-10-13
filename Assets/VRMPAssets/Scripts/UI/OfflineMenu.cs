@@ -31,6 +31,8 @@ namespace XRMultiplayer
         [SerializeField] Sprite m_MutedSprite;
         [SerializeField] Sprite m_UnmutedSprite;
 
+        public bool skipAppearanceOnStart;
+
         [Header("Panel Objects")]
         [SerializeField] GameObject m_CustomizationPanel;
         [SerializeField] GameObject m_ConnectionPanel;
@@ -62,7 +64,7 @@ namespace XRMultiplayer
             XRINetworkGameManager.LocalPlayerName.Unsubscribe(SetPlayerName);
             XRINetworkGameManager.LocalPlayerColor.Unsubscribe(SetPlayerColor);
             OfflinePlayerAvatar.voiceAmp.Unsubscribe(UpdateMicIcon);
-            m_VoiceChatManager.selfMuted.Subscribe(MutedChanged);
+            m_VoiceChatManager.selfMuted.Unsubscribe(MutedChanged);
 
             XRINetworkGameManager.Instance.OnConnectionFailedAction -= ConnectionFailed;
         }
@@ -101,8 +103,8 @@ namespace XRMultiplayer
 
         void ShowCustomization()
         {
-            m_CustomizationPanel.SetActive(true);
-            m_ConnectionPanel.SetActive(false);
+            m_CustomizationPanel.SetActive(!skipAppearanceOnStart);
+            m_ConnectionPanel.SetActive(skipAppearanceOnStart);
         }
 
         public void CompleteCustomization()

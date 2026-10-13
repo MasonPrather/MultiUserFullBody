@@ -71,7 +71,16 @@ namespace XRMultiplayer
         /// Simple Authentication function. This uses bare bones authentication and anonymous sign in.
         /// </summary>
         /// <returns></returns>
-        public virtual async Task<bool> Authenticate()
+        Task<bool> m_AuthenticationTask;
+
+        public virtual Task<bool> Authenticate()
+        {
+            if (m_AuthenticationTask == null || m_AuthenticationTask.IsCompleted)
+                m_AuthenticationTask = AuthenticateInternal();
+            return m_AuthenticationTask;
+        }
+
+        async Task<bool> AuthenticateInternal()
         {
             try
             {

@@ -20,6 +20,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_Scenes/PhonePhotoUpload.unity
     guid: abc4992e7e15412e959ce868f18fbc94
+  - enabled: 0
+    path: Assets/_Scenes/MUFBAvatars_Fall2026.unity
+    guid: f9fbc017fb084ddeac4d852bf9f310d5
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 6bee4f8767e504ff8ae33dcdd19ebad2, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: c348712bda248c246b8c49b3db54643f, type: 3}

@@ -50,9 +50,21 @@ namespace XRMultiplayer
 
         [Tooltip("This will hide editor created rooms from external builds.\nNOTE: This will not hide editor created rooms from other editors.")]
         public bool hideEditorFromLobby = false;
+        [Tooltip("When disabled, Quick Join only joins a compatible existing room.")]
+        public bool quickJoinCreatesSession = true;
+        int m_OperationGeneration;
 
         // Action that gets invoked when you fail to connect to a lobby. Primarily used for noting failure messages.
         public Action<string> OnSessionFailed;
+        public string lastFailureReason { get; private set; }
+
+        void ReportFailure(string message)
+        {
+            StopAllCoroutines();
+            lastFailureReason = message;
+            m_Status.Value = message;
+            OnSessionFailed?.Invoke(message);
+        }
 
         public ISession currentSession => m_CurrentSession;
         ISession m_CurrentSession;
@@ -136,49 +148,30 @@ namespace XRMultiplayer
         /// <returns></returns>
         public async Task<ISession> QuickJoinLobby()
         {
-            m_Status.Value = "Checking For Existing Lobbies.";
-
+            int generation = m_OperationGeneration;
+            lastFailureReason = null;
+            m_Status.Value = "Looking for an open room…";
             try
             {
-                QuerySessionsResults results = await MultiplayerService.Instance.QuerySessionsAsync(GetQuickJoinFilterOptions());
-
-                bool createOwn = true;
-                if (results.Sessions.Count > 0)
+                var results = await MultiplayerService.Instance.QuerySessionsAsync(GetQuickJoinFilterOptions());
+                foreach (var session in results.Sessions)
                 {
-                    try
-                    {
-                        // loop through all sessions and check for available slots
-                        foreach (var session in results.Sessions)
-                        {
-                            if (session.AvailableSlots > 0)
-                            {
-                                await JoinLobby(session);
-                                createOwn = false;
-                                break;
-                            }
-                            else
-                            {
-                                Utils.Log($"{k_DebugPrepend}Skipping full session: {session.Name}");
-                            }
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Utils.LogWarning($"Sessions Exist, but failed to connect: {e}");
-                    }
+                    if (generation != m_OperationGeneration) return null;
+                    if (session.AvailableSlots <= 0 || session.IsLocked || session.HasPassword ||
+                        CheckForSessionFilter(session) || CheckForIncompatibilityFilter(session)) continue;
+                    var joined = await JoinLobby(session);
+                    if (joined != null) return joined;
                 }
-                if (createOwn)
-                {
-                    m_Status.Value = "No Available Session. Creating New Session.";
-                    await CreateSession(maxPlayers: XRINetworkGameManager.maxPlayers);
-                }
+                if (generation != m_OperationGeneration) return null;
+                if (quickJoinCreatesSession) return await CreateSession();
+                ReportFailure("No open room found. Ask your colleague to Host, then try Join again.");
             }
             catch (Exception e)
             {
-                Debug.LogException(e);
+                Utils.LogWarning($"{k_DebugPrepend}Quick Join failed: {e.Message}");
+                ReportFailure("Unable to find a room. Check Wi-Fi and try again.");
             }
-
-            return m_CurrentSession;
+            return null;
         }
 
         /// <summary>
@@ -189,6 +182,8 @@ namespace XRMultiplayer
         /// <returns>Returns the Lobby.</returns>
         public async Task<ISession> JoinLobby(ISessionInfo sessionInfo = null, string roomCode = null)
         {
+            int generation = m_OperationGeneration;
+            lastFailureReason = null;
             try
             {
                 if (sessionInfo != null)     // Check for session info
@@ -196,18 +191,18 @@ namespace XRMultiplayer
                     m_Status.Value = "Connecting To Room: " + sessionInfo.Name;
                     StopAllCoroutines();
                     StartCoroutine(PlayConnectionMessage());
-                    m_CurrentSession = await MultiplayerService.Instance.JoinSessionByIdAsync(sessionInfo.Id);
+                    if (!await AcceptSession(await MultiplayerService.Instance.JoinSessionByIdAsync(sessionInfo.Id), generation)) return null;
                 }
                 else if (!string.IsNullOrEmpty(roomCode)) // Check for room code
                 {
                     m_Status.Value = "Connecting To Room Code: " + roomCode;
                     StopAllCoroutines();
                     StartCoroutine(PlayConnectionMessage());
-                    m_CurrentSession = await MultiplayerService.Instance.JoinSessionByCodeAsync(roomCode);
+                    if (!await AcceptSession(await MultiplayerService.Instance.JoinSessionByCodeAsync(roomCode), generation)) return null;
                 }
                 else
                 {
-                    m_CurrentSession = await QuickJoinLobby();
+                    return await QuickJoinLobby();
                 }
 
                 ConnectedToSession();
@@ -232,7 +227,7 @@ namespace XRMultiplayer
                         failureMessage = e.Message;
                 }
                 Utils.Log($"{k_DebugPrepend}{failureMessage}\n\n{e}", 1);
-                OnSessionFailed?.Invoke($"{failureMessage}");
+                ReportFailure($"{failureMessage}");
                 return null;
             }
         }
@@ -243,6 +238,8 @@ namespace XRMultiplayer
         /// <returns></returns>
         public async Task<ISession> CreateSession(string roomName = null, bool isPrivate = false, int maxPlayers = XRINetworkGameManager.maxPlayers)
         {
+            int generation = m_OperationGeneration;
+            lastFailureReason = null;
             string sessionName = roomName;
 
             if (string.IsNullOrEmpty(sessionName))
@@ -258,7 +255,7 @@ namespace XRMultiplayer
 
                     StopAllCoroutines();
                     StartCoroutine(PlayConnectionMessage());
-                    m_CurrentSession = await MultiplayerService.Instance.CreateOrJoinSessionAsync(sessionId.ToString(), options);
+                    if (!await AcceptSession(await MultiplayerService.Instance.CreateOrJoinSessionAsync(sessionId.ToString(), options), generation)) return null;
 
                     ConnectedToSession();
                 }
@@ -267,7 +264,7 @@ namespace XRMultiplayer
                     string failureMessage = $"Failed to connect to {sessionName}. Please try again.";
                     Utils.Log($"{k_DebugPrepend}{failureMessage}\n\n{e}", 1);
                     // Debug.LogWarning($"[XRMPT] {failureMessage}\n\n{e}");
-                    OnSessionFailed?.Invoke(failureMessage);
+                    ReportFailure(failureMessage);
                     return null;
                 }
 
@@ -278,7 +275,7 @@ namespace XRMultiplayer
                 string failureMessage = "Failed to Create Lobby. Please try again.";
                 Utils.Log($"{k_DebugPrepend}{failureMessage}\n\n{e}", 1);
                 // Debug.LogWarning($"[XRMPT] {failureMessage}\n\n{e}");
-                OnSessionFailed?.Invoke(failureMessage);
+                ReportFailure(failureMessage);
                 return null;
             }
         }
@@ -303,20 +300,39 @@ namespace XRMultiplayer
 
         IEnumerator PlayConnectionMessage()
         {
-            yield return new WaitForSeconds(2f);
-            m_Status.Value = "Systems functional.";
-            yield return new WaitForSeconds(1f);
-            m_Status.Value = "Checklist protocol initiated.";
-            yield return new WaitForSeconds(1f);
-            m_Status.Value = "Receiving transmission.";
-            yield return new WaitForSeconds(1f);
-            m_Status.Value = "Hailing frequencies open.";
-            yield return new WaitForSeconds(1f);
-            m_Status.Value = "Systems online.";
-            yield return new WaitForSeconds(2f);
-            m_Status.Value = "Systems validating.";
-            yield return new WaitForSeconds(3f);
-            m_Status.Value = "Signal unstable.";
+            m_Status.Value = "Connecting to session…";
+            yield return new WaitForSecondsRealtime(5f);
+            m_Status.Value = "Waiting for network and player avatar…";
+        }
+
+        async Task<bool> AcceptSession(ISession session, int generation)
+        {
+            if (generation != m_OperationGeneration)
+            {
+                await session.LeaveAsync();
+                return false;
+            }
+            m_CurrentSession = session;
+            float deadline = Time.realtimeSinceStartup + 25f;
+            while (generation == m_OperationGeneration && Time.realtimeSinceStartup < deadline)
+            {
+                var manager = NetworkManager.Singleton;
+                if (manager && manager.IsConnectedClient && manager.LocalClient?.PlayerObject != null)
+                {
+                    StopAllCoroutines();
+                    m_Status.Value = "Connected";
+                    return true;
+                }
+                await Task.Delay(50);
+            }
+            if (generation == m_OperationGeneration)
+            {
+                m_CurrentSession = null;
+                await session.LeaveAsync();
+                StopAllCoroutines();
+                ReportFailure("Network connection timed out before the player spawned. Please retry.");
+            }
+            return false;
         }
 
         /// <summary>
@@ -324,9 +340,9 @@ namespace XRMultiplayer
         /// </summary>
         void ConnectedToSession()
         {
-            XRINetworkGameManager.ConnectedRoomCode = m_CurrentSession.Code;
             if (m_CurrentSession != null)
             {
+                XRINetworkGameManager.ConnectedRoomCode = m_CurrentSession.Code;
                 m_CurrentSession.SessionPropertiesChanged += OnSessionPropertiesChanged;
             }
         }
@@ -339,22 +355,27 @@ namespace XRMultiplayer
 
         public async Task LeaveSession()
         {
-            if (m_CurrentSession != null)
-            {
-                m_CurrentSession.SessionPropertiesChanged -= OnSessionPropertiesChanged;
-                await m_CurrentSession.LeaveAsync();
-                m_CurrentSession = null;
-            }
-            else
-            {
-                Utils.Log($"{k_DebugPrepend}Connected Lobby is null");
-            }
+            ++m_OperationGeneration; // Reject and leave any create/join that completes after cancellation.
+            StopAllCoroutines();
+            var session = m_CurrentSession;
+            m_CurrentSession = null;
+            if (session == null) return;
+            session.SessionPropertiesChanged -= OnSessionPropertiesChanged;
+            try { await session.LeaveAsync(); }
+            catch (Exception e) { Utils.LogWarning($"{k_DebugPrepend}Leave failed: {e.Message}"); }
         }
 
         public static QuerySessionsOptions GetQuickJoinFilterOptions()
         {
-            QuerySessionsOptions options = new QuerySessionsOptions();
-            return options;
+            return new QuerySessionsOptions
+            {
+                FilterOptions = new List<FilterOption>
+                {
+                    new(FilterField.AvailableSlots, "0", FilterOperation.Greater),
+                    new(FilterField.IsLocked, "false", FilterOperation.Equal),
+                    new(FilterField.HasPassword, "false", FilterOperation.Equal)
+                }
+            };
         }
 
         /// <summary>
@@ -412,12 +433,16 @@ namespace XRMultiplayer
 
         public static bool CheckForSessionFilter(ISessionInfo sessionInfo)
         {
-            return false;
+            return sessionInfo.Properties == null ||
+                !sessionInfo.Properties.TryGetValue(k_SceneKeyIdentifier, out var scene) ||
+                scene.Value != SceneManager.GetActiveScene().name;
         }
 
         public static bool CheckForIncompatibilityFilter(ISessionInfo sessionInfo)
         {
-            return false;
+            return sessionInfo.Properties == null ||
+                !sessionInfo.Properties.TryGetValue(k_BuildIdKeyIdentifier, out var build) ||
+                build.Value != Application.version;
         }
 
         public static bool CanJoinLobby(ISessionInfo session)
